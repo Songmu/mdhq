@@ -42,23 +42,10 @@ try {
     ["--input-type=module", "-e", 'await import("markhq")'],
     { cwd: consumerDirectory, stdio: "inherit" }
   );
-  const binPath = path.join(
-    consumerDirectory,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "markhq.cmd" : "markhq"
-  );
-  const version =
-    process.platform === "win32"
-      ? execFileSync(
-          process.env.ComSpec ?? "cmd.exe",
-          ["/d", "/s", "/c", `"${binPath}" --version`],
-          { cwd: consumerDirectory, encoding: "utf8" }
-        ).trim()
-      : execFileSync(binPath, ["--version"], {
-          cwd: consumerDirectory,
-          encoding: "utf8"
-        }).trim();
+  const version = runNpm(["exec", "--", "markhq", "--version"], {
+    cwd: consumerDirectory,
+    encoding: "utf8"
+  }).trim();
   if (!version) {
     throw new Error("Installed markhq executable produced no version output");
   }
