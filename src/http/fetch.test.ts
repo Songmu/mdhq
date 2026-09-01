@@ -183,6 +183,10 @@ describe("fetchHtml", () => {
     const address = conditionalServer.address() as AddressInfo;
     try {
       const result = await fetchHtml(`http://127.0.0.1:${address.port}/`, {
+        headers: [
+          { name: "If-None-Match", value: '"caller"' },
+          { name: "If-Modified-Since", value: "Sun, 30 Aug 2026 03:00:00 GMT" }
+        ],
         conditional: {
           etag: '"old"',
           lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"

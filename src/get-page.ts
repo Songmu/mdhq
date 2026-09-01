@@ -105,10 +105,10 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     return normalized;
   };
   if (fetched.notModified) {
-    if (!requestedExisting) {
+    if (!requestedExisting || !conditional) {
       throw new MdhqError(
         "FETCH_FAILED",
-        `HTTP 304 for ${requestedUrl} without an existing document`
+        `HTTP 304 for ${requestedUrl} without a matching stored validator`
       );
     }
     const lastModified = normalizeLastModified(
@@ -130,7 +130,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
     });
     const content = serializeDocument(frontmatter, requestedExisting.markdown);
-    await saveDocument({
+    const storageStatus = await saveDocument({
       path: requestedPath,
       content,
       sourceUrl: requestedExisting.sourceUrl,
@@ -142,7 +142,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       requestedUrl,
       sourceUrl: requestedExisting.sourceUrl,
       path: requestedPath,
-      status: "unchanged",
+      status: storageStatus === "updated" ? "unchanged" : storageStatus,
       assets: [],
       warnings
     };

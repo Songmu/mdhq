@@ -60,10 +60,9 @@ function requestHeaders(
       headers.append(header.name, header.value);
     }
   }
-  const hasCallerConditional = (options.headers ?? []).some((header) =>
-    ["if-none-match", "if-modified-since"].includes(header.name.toLowerCase())
-  );
-  if (includeConditionalHeaders && !hasCallerConditional) {
+  if (includeConditionalHeaders && options.conditional) {
+    headers.delete("if-none-match");
+    headers.delete("if-modified-since");
     if (options.conditional?.etag) {
       headers.set("if-none-match", options.conditional.etag);
     } else if (options.conditional?.lastModified) {

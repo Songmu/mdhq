@@ -57,7 +57,9 @@ With `--json`, stdout contains an object with this shape:
 `status` is one of:
 
 - `saved`: a new Markdown file was created.
-- `updated`: an existing same-identity Markdown file was atomically replaced.
+- `updated`: an existing document's normalized Markdown body changed.
+- `unchanged`: an update succeeded without changing the normalized Markdown
+  body, including an HTTP 304 response.
 - `skipped`: an existing same-identity file was kept.
 
 An error is written to stderr and causes exit status `1`.
@@ -122,8 +124,10 @@ With `update`, mdhq uses validators from a recognized existing destination:
 3. Otherwise perform an ordinary GET.
 
 Automatic validators are sent only on the first request and are not forwarded
-after redirects. Caller-provided `If-None-Match` or `If-Modified-Since`
-suppresses automatic validator headers.
+after redirects. When a stored validator is available, it replaces any
+caller-provided `If-None-Match` or `If-Modified-Since` value so that an HTTP
+304 always corresponds to the saved document. A 304 received without a stored
+validator is an error.
 
 An HTTP 304 response preserves the existing Markdown body, skips conversion
 and asset downloads, updates `modified`, and returns `unchanged`. A 200

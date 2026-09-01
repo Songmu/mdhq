@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ describe("getPage", () => {
   let crossOriginTarget: string | undefined;
   let changingBody: string;
   let includeChangingEtag: boolean;
+  let removeBeforeNotModified: string | undefined;
   let conditionalHeaders: Array<{
     path: string;
     etag?: string;
@@ -23,6 +24,7 @@ describe("getPage", () => {
   beforeEach(async () => {
     changingBody = "First version";
     includeChangingEtag = false;
+    removeBeforeNotModified = undefined;
     conditionalHeaders = [];
     server = createServer((request, response) => {
       conditionalHeaders.push({
@@ -36,6 +38,18 @@ describe("getPage", () => {
       });
       if (request.url === "/conditional-etag") {
         if (request.headers["if-none-match"] === '"v1"') {
+          if (removeBeforeNotModified) {
+            const file = removeBeforeNotModified;
+            removeBeforeNotModified = undefined;
+            void rm(file)
+              .then(() => response.writeHead(304, { etag: '"v1"' }).end())
+              .catch((error: unknown) =>
+                response.destroy(
+                  error instanceof Error ? error : new Error(String(error))
+                )
+              );
+            return;
+          }
           response.writeHead(304, { etag: '"v1"' }).end();
           return;
         }
@@ -73,6 +87,18 @@ describe("getPage", () => {
           })
           .end(
             `<html><head><title>Changing</title></head><body><article><p>${changingBody}</p></article></body></html>`
+          );
+        return;
+      }
+      if (request.url === "/caller-conditional") {
+        if (request.headers["if-none-match"] === '"caller"') {
+          response.writeHead(304).end();
+          return;
+        }
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>Caller conditional</title></head><body><article><p>Stored version.</p></article></body></html>"
           );
         return;
       }
@@ -297,6 +323,7 @@ describe("getPage", () => {
       url: `${baseUrl}/conditional-etag`,
       root,
       update: true,
+      headers: [{ name: "If-None-Match", value: '"caller"' }],
       useAsync: false,
       now: () => new Date("2026-09-01T14:00:00+09:00")
     });
@@ -310,6 +337,27 @@ describe("getPage", () => {
     expect(
       conditionalHeaders.filter((request) => request.path === "/image.png").length
     ).toBe(imageRequestsBefore);
+  });
+
+  it("preserves a saved race outcome after a 304 response", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    removeBeforeNotModified = first.path;
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.status).toBe("saved");
+    expect(parseDocument(await readFile(updated.path, "utf8"))?.markdown).toContain(
+      "Stable content for ETag."
+    );
   });
 
   it("falls back to Last-Modified when ETag is absent", async () => {
@@ -379,5 +427,26 @@ describe("getPage", () => {
     expect(
       parseDocument(await readFile(result.path, "utf8"))?.frontmatter
     ).not.toHaveProperty("last_modified");
+  });
+
+  it("rejects a 304 produced by a caller validator not tied to the document", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/caller-conditional`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const before = await readFile(first.path, "utf8");
+    await expect(
+      getPage({
+        url: `${baseUrl}/caller-conditional`,
+        root,
+        assets: false,
+        update: true,
+        headers: [{ name: "If-None-Match", value: '"caller"' }],
+        useAsync: false
+      })
+    ).rejects.toMatchObject({ code: "FETCH_FAILED" });
+    expect(await readFile(first.path, "utf8")).toBe(before);
   });
 });
