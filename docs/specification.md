@@ -25,8 +25,8 @@ mdhq get [options] <url>
 mdhq list [options]
 ```
 
-Exactly one URL is accepted per invocation. Parallel or multi-URL processing
-is delegated to external tools such as `xargs`.
+`mdhq get` accepts exactly one URL per invocation. Parallel or multi-URL
+processing is delegated to external tools such as `xargs`.
 
 ### `get` options
 
