@@ -9,8 +9,12 @@ describe("configuration", () => {
     expect(defaultConfigPath({ XDG_CONFIG_HOME: "/config" })).toBe(
       path.join("/config", "markhq", "config.json")
     );
-    expect(resolveRoot("/cli", { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe("/cli");
-    expect(resolveRoot(undefined, { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe("/env");
+    expect(resolveRoot("/cli", { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe(
+      path.resolve("/cli")
+    );
+    expect(resolveRoot(undefined, { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe(
+      path.resolve("/env")
+    );
   });
 
   it("warns for unknown keys while accepting the configuration", async () => {
