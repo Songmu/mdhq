@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 import { createUrlIdentity, parseHttpUrl } from "../url/identity.js";
 import { decodeUrlPathSegment, storageBasename } from "../url/pathname.js";
 const INVALID_CHARACTERS = /[\/\\:*?"<>|\u0000-\u001f\u007f]/u;
@@ -24,7 +24,7 @@ function ensureWithinRoot(root: string, target: string): string {
     relative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative)
   ) {
-    throw new MarkhqError("PATH_COLLISION", `Storage path escapes its root: ${target}`);
+    throw new MdhqError("PATH_COLLISION", `Storage path escapes its root: ${target}`);
   }
   return target;
 }
@@ -70,7 +70,7 @@ function hostDirectory(url: URL): string {
     : identity.host.replaceAll(":", "_");
   const safeHost = fitSegment(encodeURIComponent(host));
   if (safeHost.toLowerCase() === "_assets") {
-    throw new MarkhqError("PATH_COLLISION", "The normalized host conflicts with _assets");
+    throw new MdhqError("PATH_COLLISION", "The normalized host conflicts with _assets");
   }
   return safeHost;
 }
@@ -126,7 +126,7 @@ export function storagePathForUrl(options: StoragePathOptions): string {
       return ensureWithinRoot(resolvedRoot, result);
     }
   }
-  throw new MarkhqError(
+  throw new MdhqError(
     "PATH_TOO_LONG",
     `Storage path is too long for ${url.href}: ${result}`
   );

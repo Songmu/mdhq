@@ -1,4 +1,4 @@
-export type MarkhqErrorCode =
+export type MdhqErrorCode =
   | "INVALID_URL"
   | "INVALID_HEADER"
   | "UNSUPPORTED_SCHEME"
@@ -12,13 +12,13 @@ export type MarkhqErrorCode =
   | "PATH_TOO_LONG"
   | "STORAGE_ERROR";
 
-export class MarkhqError extends Error {
-  readonly code: MarkhqErrorCode;
+export class MdhqError extends Error {
+  readonly code: MdhqErrorCode;
   readonly cause?: unknown;
 
-  constructor(code: MarkhqErrorCode, message: string, options?: { cause?: unknown }) {
+  constructor(code: MdhqErrorCode, message: string, options?: { cause?: unknown }) {
     super(message);
-    this.name = "MarkhqError";
+    this.name = "MdhqError";
     this.code = code;
     this.cause = options?.cause;
   }

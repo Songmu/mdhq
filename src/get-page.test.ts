@@ -69,7 +69,7 @@ describe("getPage", () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
-    root = await mkdtemp(path.join(os.tmpdir(), "markhq-get-"));
+    root = await mkdtemp(path.join(os.tmpdir(), "mdhq-get-"));
   });
 
   afterEach(async () => {

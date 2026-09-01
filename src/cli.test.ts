@@ -28,7 +28,7 @@ describe("CLI", () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
     url = `http://127.0.0.1:${address.port}/article`;
-    root = await mkdtemp(path.join(os.tmpdir(), "markhq-cli-"));
+    root = await mkdtemp(path.join(os.tmpdir(), "mdhq-cli-"));
   });
 
   afterEach(async () => {
@@ -54,7 +54,7 @@ describe("CLI", () => {
         }
       }
     };
-    expect(await runCli(["node", "markhq", "get", "--root", root, url], io)).toBe(0);
+    expect(await runCli(["node", "mdhq", "get", "--root", root, url], io)).toBe(0);
     expect(stdout.trim()).toBe(
       path.join(root, `127.0.0.1_${new URL(url).port}`, "article.md")
     );
@@ -73,7 +73,7 @@ describe("CLI", () => {
       stderr: { write: () => true }
     };
     expect(
-      await runCli(["node", "markhq", "get", "--root", root, "--json", url], io)
+      await runCli(["node", "mdhq", "get", "--root", root, "--json", url], io)
     ).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({ requestedUrl: url, status: "saved" });
   });
@@ -90,7 +90,7 @@ describe("CLI", () => {
       stderr: { write: () => true }
     };
     expect(
-      await runCli(["node", "markhq", "get", "--root", root, "--no-assets", url], io)
+      await runCli(["node", "mdhq", "get", "--root", root, "--no-assets", url], io)
     ).toBe(0);
     const document = await readFile(stdout.trim(), "utf8");
     expect(document).toContain(`![Example](${new URL("/image.png", url).href})`);
@@ -111,7 +111,7 @@ describe("CLI", () => {
       }
     };
     expect(
-      await runCli(["node", "markhq", "get", "--header", "invalid", url], io)
+      await runCli(["node", "mdhq", "get", "--header", "invalid", url], io)
     ).toBe(1);
     expect(stderr).toContain("Invalid header");
   });
@@ -130,7 +130,7 @@ describe("CLI", () => {
         }
       };
       expect(
-        await runCli(["node", "markhq", "get", "--header", header, url], io)
+        await runCli(["node", "mdhq", "get", "--header", header, url], io)
       ).toBe(1);
       expect(stderr).toContain("Invalid header");
     }

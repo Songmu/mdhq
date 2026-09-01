@@ -1,6 +1,6 @@
-# markhq
+# mdhq
 
-`markhq` saves web pages as Markdown in a ghq-inspired filesystem layout. It
+`mdhq` saves web pages as Markdown in a ghq-inspired filesystem layout. It
 uses Defuddle for content extraction and keeps all state in Markdown and asset
 files rather than a database.
 
@@ -11,16 +11,16 @@ files rather than a database.
 ## Installation
 
 ```sh
-npm install --global markhq
+npm install --global mdhq
 ```
 
 ## CLI
 
 ```sh
-markhq get https://example.com/article
-markhq get --update https://example.com/article
-markhq get --no-assets https://example.com/article
-markhq get --json --header 'Cookie: session=value' https://example.com/article
+mdhq get https://example.com/article
+mdhq get --update https://example.com/article
+mdhq get --no-assets https://example.com/article
+mdhq get --json --header 'Cookie: session=value' https://example.com/article
 ```
 
 By default, successful commands print only the absolute Markdown path to
@@ -30,17 +30,17 @@ final source URL, Markdown path, status, downloaded assets, and warnings.
 The storage root is selected in this order:
 
 1. `--root`
-2. `MARKHQ_ROOT`
+2. `MDHQ_ROOT`
 3. `root` in the configuration file
-4. `$XDG_DATA_HOME/markhq`, or `~/.local/share/markhq`
+4. `$XDG_DATA_HOME/mdhq`, or `~/.local/share/mdhq`
 
 The configuration file is
-`$XDG_CONFIG_HOME/markhq/config.json`, or
-`~/.config/markhq/config.json`.
+`$XDG_CONFIG_HOME/mdhq/config.json`, or
+`~/.config/mdhq/config.json`.
 
 ```json
 {
-  "root": "/path/to/markhq",
+  "root": "/path/to/mdhq",
   "assets": false,
   "useAsync": true,
   "frontmatter": {
@@ -69,7 +69,7 @@ patterns are rejected.
 ## Library API
 
 ```ts
-import { convertHtml, getPage } from "markhq";
+import { convertHtml, getPage } from "mdhq";
 
 const converted = await convertHtml({
   html,
@@ -78,7 +78,7 @@ const converted = await convertHtml({
 
 const saved = await getPage({
   url: "https://example.com/article",
-  root: "/path/to/markhq",
+  root: "/path/to/mdhq",
   assets: false
 });
 ```
@@ -104,4 +104,4 @@ npm run build
 npm run test:package
 ```
 
-CI runs the same checks on Linux and Windows.
+CI runs the same checks on Linux, Windows, and macOS.

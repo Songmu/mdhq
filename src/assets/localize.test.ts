@@ -35,7 +35,7 @@ describe("localizeAssets", () => {
   });
 
   it("does not send page headers to cross-origin assets", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "markhq-assets-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
     const sourceUrl = `${baseUrl}/image.png`;
     const result = await localizeAssets({
       markdown: `![image](${sourceUrl})`,
@@ -51,7 +51,7 @@ describe("localizeAssets", () => {
   });
 
   it("rejects an explicitly non-image response despite its extension", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "markhq-assets-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
     const sourceUrl = `${baseUrl}/bad.png`;
     const result = await localizeAssets({
       markdown: `![image](${sourceUrl})`,
@@ -68,7 +68,7 @@ describe("localizeAssets", () => {
   });
 
   it("atomically replaces a differing existing asset", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "markhq-assets-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
     const sourceUrl = `${baseUrl}/image.png`;
     const digest = createHash("md5").update(sourceUrl).digest("hex");
     const assetPath = path.join(root, "_assets", `${digest}.png`);
@@ -93,7 +93,7 @@ describe("localizeAssets", () => {
     await new Promise<void>((resolve) => jpegServer.listen(0, "127.0.0.1", resolve));
     const address = jpegServer.address() as AddressInfo;
     const sourceUrl = `http://127.0.0.1:${address.port}/photo.jpeg`;
-    const root = await mkdtemp(path.join(os.tmpdir(), "markhq-assets-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
     try {
       const result = await localizeAssets({
         markdown: `![image](${sourceUrl})`,

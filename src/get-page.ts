@@ -7,14 +7,14 @@ import { fetchHtml, fetchWithEnvProxy } from "./http/fetch.js";
 import { transformMarkdown } from "./markdown/transform.js";
 import { storagePathForUrl } from "./path/storage-path.js";
 import { inspectDestination, saveDocument } from "./storage/save.js";
-import type { GetPageOptions, GetPageResult, MarkhqWarning } from "./types.js";
+import type { GetPageOptions, GetPageResult, MdhqWarning } from "./types.js";
 import { normalizeHost, parseHttpUrl } from "./url/identity.js";
 
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   const requestedUrl = parseHttpUrl(options.url).href;
   const loaded = await loadConfig(options.configPath);
-  const warnings: MarkhqWarning[] = [];
-  const warn = (warning: MarkhqWarning): void => {
+  const warnings: MdhqWarning[] = [];
+  const warn = (warning: MdhqWarning): void => {
     warnings.push(warning);
     options.onWarning?.(warning);
   };

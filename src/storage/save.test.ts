@@ -7,7 +7,7 @@ import { saveDocument } from "./save.js";
 
 describe("saveDocument", () => {
   it("saves, skips the same identity, and rejects a collision", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-save-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
     const file = path.join(directory, "example.md");
     const first = serializeDocument({ source: "https://example.com/page" }, "first");
     expect(
@@ -37,7 +37,7 @@ describe("saveDocument", () => {
   });
 
   it("atomically updates an existing document", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-save-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
     const file = path.join(directory, "example.md");
     await saveDocument({
       path: file,
@@ -57,7 +57,7 @@ describe("saveDocument", () => {
   });
 
   it("does not overwrite a concurrently created document during update", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-save-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
     const file = path.join(directory, "example.md");
     const attempts = await Promise.allSettled([
       saveDocument({
@@ -78,7 +78,7 @@ describe("saveDocument", () => {
   });
 
   it("reports malformed existing documents as path collisions", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-save-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
     const file = path.join(directory, "example.md");
     await writeFile(file, "---\ninvalid: [\n---\nbody");
     await expect(

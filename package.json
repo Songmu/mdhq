@@ -1,10 +1,10 @@
 {
-  "name": "markhq",
+  "name": "mdhq",
   "version": "0.0.0",
   "description": "Save web pages as Markdown in a ghq-inspired filesystem layout.",
   "type": "module",
   "bin": {
-    "markhq": "./dist/cli.js"
+    "mdhq": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -38,9 +38,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Songmu/markhq.git"
+    "url": "git+https://github.com/Songmu/mdhq.git"
   },
-  "homepage": "https://github.com/Songmu/markhq",
+  "homepage": "https://github.com/Songmu/mdhq",
   "license": "MIT",
   "dependencies": {
     "commander": "^14.0.0",

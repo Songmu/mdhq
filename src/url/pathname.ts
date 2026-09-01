@@ -1,4 +1,4 @@
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 
 export const HTML_EXTENSIONS = new Set([
   ".html",
@@ -15,7 +15,7 @@ export function decodeUrlPathSegment(segment: string): string {
   try {
     return decodeURIComponent(segment.replace(/%(?![0-9a-f]{2})/giu, "%25")).normalize("NFC");
   } catch (error) {
-    throw new MarkhqError("INVALID_URL", `Invalid UTF-8 in path segment: ${segment}`, {
+    throw new MdhqError("INVALID_URL", `Invalid UTF-8 in path segment: ${segment}`, {
       cause: error
     });
   }

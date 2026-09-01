@@ -3,7 +3,7 @@ import { Command, Option } from "commander";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MarkhqError } from "./errors.js";
+import { MdhqError } from "./errors.js";
 import { getPage } from "./get-page.js";
 import type { HeaderValue } from "./types.js";
 import { VERSION } from "./version.js";
@@ -20,7 +20,7 @@ function parseHeaders(values: string[]): HeaderValue[] {
       separator <= 0 ||
       !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u.test(name)
     ) {
-      throw new MarkhqError("INVALID_HEADER", `Invalid header: ${value}`);
+      throw new MdhqError("INVALID_HEADER", `Invalid header: ${value}`);
     }
     return {
       name,
@@ -36,7 +36,7 @@ export interface CliIo {
 
 export function createProgram(io: CliIo = process): Command {
   const program = new Command()
-    .name("markhq")
+    .name("mdhq")
     .version(VERSION)
     .description("Save web pages as Markdown.");
   program.configureOutput({
@@ -91,8 +91,8 @@ export async function runCli(argv = process.argv, io: CliIo = process): Promise<
     return 0;
   } catch (error) {
     const message =
-      error instanceof MarkhqError
-        ? `markhq: ${error.message}`
+      error instanceof MdhqError
+        ? `mdhq: ${error.message}`
         : error instanceof Error
           ? error.message
           : String(error);

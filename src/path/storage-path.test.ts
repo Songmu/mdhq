@@ -2,7 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { sanitizePathSegment, storagePathForUrl } from "./storage-path.js";
 
-const root = path.resolve("/tmp/markhq");
+const root = path.resolve("/tmp/mdhq");
 
 describe("storagePathForUrl", () => {
   it.each([

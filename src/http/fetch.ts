@@ -4,7 +4,7 @@ import {
   fetch as undiciFetch,
   type Dispatcher
 } from "undici";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 import type { HeaderValue } from "../types.js";
 import { DEFAULT_USER_AGENT } from "../version.js";
 import { parseHttpUrl } from "../url/identity.js";
@@ -62,7 +62,7 @@ async function readLimited(response: Response, limit: number): Promise<Uint8Arra
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > limit) {
     await response.body?.cancel().catch(() => undefined);
-    throw new MarkhqError("RESPONSE_TOO_LARGE", `Response exceeds ${limit} bytes`);
+    throw new MdhqError("RESPONSE_TOO_LARGE", `Response exceeds ${limit} bytes`);
   }
   if (!response.body) {
     return new Uint8Array();
@@ -78,7 +78,7 @@ async function readLimited(response: Response, limit: number): Promise<Uint8Arra
     total += value.byteLength;
     if (total > limit) {
       await reader.cancel();
-      throw new MarkhqError("RESPONSE_TOO_LARGE", `Response exceeds ${limit} bytes`);
+      throw new MdhqError("RESPONSE_TOO_LARGE", `Response exceeds ${limit} bytes`);
     }
     chunks.push(value);
   }
@@ -111,28 +111,28 @@ export async function fetchResource(
         signal: AbortSignal.timeout(timeoutMs)
       })) as unknown as Response;
     } catch (error) {
-      throw new MarkhqError("FETCH_FAILED", `Failed to fetch ${url.href}`, { cause: error });
+      throw new MdhqError("FETCH_FAILED", `Failed to fetch ${url.href}`, { cause: error });
     }
 
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       if (!location) {
         await response.body?.cancel().catch(() => undefined);
-        throw new MarkhqError("FETCH_FAILED", `Redirect response has no Location: ${url.href}`);
+        throw new MdhqError("FETCH_FAILED", `Redirect response has no Location: ${url.href}`);
       }
       if (redirects >= maxRedirects) {
         await response.body?.cancel().catch(() => undefined);
-        throw new MarkhqError("TOO_MANY_REDIRECTS", `Too many redirects: ${String(input)}`);
+        throw new MdhqError("TOO_MANY_REDIRECTS", `Too many redirects: ${String(input)}`);
       }
       let nextUrl: URL;
       try {
         nextUrl = parseHttpUrl(new URL(location, url));
       } catch (error) {
         await response.body?.cancel().catch(() => undefined);
-        if (error instanceof MarkhqError && error.code === "UNSUPPORTED_SCHEME") {
+        if (error instanceof MdhqError && error.code === "UNSUPPORTED_SCHEME") {
           throw error;
         }
-        throw new MarkhqError(
+        throw new MdhqError(
           "FETCH_FAILED",
           `Invalid redirect Location for ${url.href}: ${location}`,
           { cause: error }
@@ -147,12 +147,12 @@ export async function fetchResource(
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      throw new MarkhqError("FETCH_FAILED", `HTTP ${response.status} for ${url.href}`);
+      throw new MdhqError("FETCH_FAILED", `HTTP ${response.status} for ${url.href}`);
     }
     const type = contentType(response.headers.get("content-type"));
     if (options.acceptedContentTypes && !options.acceptedContentTypes.includes(type)) {
       await response.body?.cancel().catch(() => undefined);
-      throw new MarkhqError(
+      throw new MdhqError(
         "UNSUPPORTED_CONTENT_TYPE",
         `Unsupported Content-Type ${type || "(missing)"} for ${url.href}`
       );
@@ -161,10 +161,10 @@ export async function fetchResource(
     try {
       body = await readLimited(response, maxResponseBytes);
     } catch (error) {
-      if (error instanceof MarkhqError) {
+      if (error instanceof MdhqError) {
         throw error;
       }
-      throw new MarkhqError("FETCH_FAILED", `Failed to read response body from ${url.href}`, {
+      throw new MdhqError("FETCH_FAILED", `Failed to read response body from ${url.href}`, {
         cause: error
       });
     }

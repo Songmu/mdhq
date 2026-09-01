@@ -1,5 +1,5 @@
 import { parse, stringify } from "yaml";
-import type { MarkhqConfig } from "../config/config.js";
+import type { MdhqConfig } from "../config/config.js";
 import type { PageMetadata } from "../types.js";
 
 export interface FrontmatterOptions {
@@ -10,7 +10,7 @@ export interface FrontmatterOptions {
   modified?: Date;
   image?: string;
   imageSource?: string;
-  config?: MarkhqConfig["frontmatter"];
+  config?: MdhqConfig["frontmatter"];
 }
 
 function formatLocalRfc3339(date: Date | string): string {

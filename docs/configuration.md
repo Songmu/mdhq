@@ -1,17 +1,17 @@
 # Configuration reference
 
-markhq reads one optional JSON configuration file.
+mdhq reads one optional JSON configuration file.
 
 Default location:
 
 ```text
-$XDG_CONFIG_HOME/markhq/config.json
+$XDG_CONFIG_HOME/mdhq/config.json
 ```
 
 When `XDG_CONFIG_HOME` is unset:
 
 ```text
-~/.config/markhq/config.json
+~/.config/mdhq/config.json
 ```
 
 The library can select another file with `GetPageOptions.configPath`.
@@ -29,7 +29,7 @@ configuration, and path configuration objects.
 
 ```json
 {
-  "root": "/data/markhq",
+  "root": "/data/mdhq",
   "userAgent": "my-clipper/1.0",
   "timeoutMs": 30000,
   "maxResponseBytes": 20971520,
@@ -70,7 +70,7 @@ configuration, and path configuration objects.
 | --- | --- | --- |
 | `root` | string | Default storage root. |
 | `userAgent` | string | Default page and asset User-Agent. |
-| `timeoutMs` | positive integer | Timeout in milliseconds for each markhq HTTP request attempt. |
+| `timeoutMs` | positive integer | Timeout in milliseconds for each mdhq HTTP request attempt. |
 | `maxResponseBytes` | positive integer | Maximum buffered bytes for each page or asset response. |
 | `maxRedirects` | non-negative integer | Maximum redirect count for each page or asset request. |
 | `assets` | boolean | Download images into `_assets`; defaults to `true`. |
@@ -84,10 +84,10 @@ configuration, and path configuration objects.
 The effective root is selected in this order:
 
 1. CLI `--root` or library `GetPageOptions.root`
-2. `MARKHQ_ROOT`
+2. `MDHQ_ROOT`
 3. configuration `root`
-4. `$XDG_DATA_HOME/markhq`
-5. `~/.local/share/markhq` when `XDG_DATA_HOME` is unset
+4. `$XDG_DATA_HOME/mdhq`
+5. `~/.local/share/mdhq` when `XDG_DATA_HOME` is unset
 
 The selected root is converted to an absolute path.
 
@@ -98,7 +98,7 @@ Otherwise configuration overrides the built-in default.
 
 | Library option | Configuration field | Built-in default |
 | --- | --- | --- |
-| `userAgent` | `userAgent` | markhq version User-Agent |
+| `userAgent` | `userAgent` | mdhq version User-Agent |
 | `timeoutMs` | `timeoutMs` | `30000` |
 | `maxResponseBytes` | `maxResponseBytes` | `20971520` |
 | `maxRedirects` | `maxRedirects` | `10` |
@@ -109,10 +109,10 @@ therefore overrides configuration `userAgent`.
 The CLI `--no-assets` option passes `GetPageOptions.assets: false` and
 therefore overrides configuration `assets`. When asset localization is
 disabled, image destinations remain absolute URLs, the result contains no
-asset entries, and markhq does not create `_assets`.
+asset entries, and mdhq does not create `_assets`.
 
 Generic CLI `--header` values and library `headers` values are appended after
-markhq creates its `Accept` and User-Agent headers. A generic `User-Agent` or
+mdhq creates its `Accept` and User-Agent headers. A generic `User-Agent` or
 `Accept` entry is combined with the existing value; it does not replace it.
 Use the dedicated User-Agent option for replacement.
 
@@ -141,13 +141,13 @@ Supported `defuddle` fields:
 | `includeReplies` | boolean or `"extractors"` |
 | `profile` | boolean |
 
-markhq always enables Defuddle Markdown output and supplies its own
+mdhq always enables Defuddle Markdown output and supplies its own
 proxy-aware fetch implementation. Those values are not configurable through
 the JSON file.
 
 The supplied fetch implementation adds environment proxy handling only.
-Defuddle-internal asynchronous requests do not inherit markhq generic
-headers, the configured markhq User-Agent, or markhq's timeout,
+Defuddle-internal asynchronous requests do not inherit mdhq generic
+headers, the configured mdhq User-Agent, or mdhq's timeout,
 response-size, and redirect limits.
 
 The effective asynchronous-extractor setting is:
@@ -170,7 +170,7 @@ Application order:
 1. Add extracted metadata and representative-image fields.
 2. Remove fields listed in `exclude`.
 3. Apply fields from `values`.
-4. Add protected markhq fields.
+4. Add protected mdhq fields.
 
 Protected fields are:
 

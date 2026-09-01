@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildFrontmatter, parseDocumentFrontmatter, serializeDocument } from "./frontmatter.js";
 
 describe("frontmatter", () => {
-  it("adds markhq fields and requested URL only for redirects", () => {
+  it("adds mdhq fields and requested URL only for redirects", () => {
     const fields = buildFrontmatter({
       metadata: { title: "Example", wordCount: 42 },
       sourceUrl: "https://example.com/final",

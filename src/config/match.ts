@@ -1,6 +1,6 @@
 import { domainToASCII } from "node:url";
 import { Minimatch } from "minimatch";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 
 export interface PathConfig {
   entryQueryKey?: string | null;
@@ -71,7 +71,7 @@ function selectPattern<T>(
   }));
   const exact = entries.filter((entry) => entry.normalizedPattern === value);
   if (exact.length > 1) {
-    throw new MarkhqError(
+    throw new MdhqError(
       "CONFIG_ERROR",
       `Ambiguous normalized ${kind} patterns: ${exact.map((entry) => entry.pattern).join(" and ")}`
     );
@@ -97,7 +97,7 @@ function selectPattern<T>(
     (match, index) => index > 0 && match.specificity === best?.specificity
   );
   if (ambiguous) {
-    throw new MarkhqError(
+    throw new MdhqError(
       "CONFIG_ERROR",
       `Ambiguous ${kind} patterns: ${best?.pattern} and ${ambiguous.pattern}`
     );
