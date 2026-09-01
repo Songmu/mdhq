@@ -43,7 +43,7 @@
   "homepage": "https://github.com/Songmu/markhq",
   "license": "MIT",
   "dependencies": {
-    "commander": "^14.0.0",
+    "commander": "^15.0.0",
     "defuddle": "0.19.3",
     "linkedom": "^0.18.12",
     "mathml-to-latex": "^1.8.0",
