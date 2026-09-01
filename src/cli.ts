@@ -3,6 +3,7 @@ import { Command, Option } from "commander";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadConfig, resolveRoot } from "./config/config.js";
 import { MdhqError } from "./errors.js";
 import { getPage } from "./get-page.js";
 import { listMarkdownFiles } from "./list-files.js";
@@ -98,6 +99,18 @@ export function createProgram(io: CliIo = process): Command {
       if (files.length > 0) {
         io.stdout.write(`${files.join("\n")}\n`);
       }
+    });
+
+  program
+    .command("root")
+    .description("Print the effective storage root.")
+    .option("--root <path>", "storage root")
+    .action(async (options: { root?: string }) => {
+      const loaded = await loadConfig();
+      for (const warning of loaded.warnings) {
+        io.stderr.write(`warning: ${warning.message}\n`);
+      }
+      io.stdout.write(`${resolveRoot(options.root, loaded.config)}\n`);
     });
   return program;
 }

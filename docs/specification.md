@@ -18,11 +18,12 @@ Runtime requirements:
 
 ## CLI
 
-The executable provides two subcommands:
+The executable provides three subcommands:
 
 ```text
 mdhq get [options] <url>
 mdhq list [options]
+mdhq root [options]
 ```
 
 `mdhq get` accepts exactly one URL per invocation. Parallel or multi-URL
@@ -75,6 +76,14 @@ using the same precedence as `get`.
 Directory symbolic links are not followed. Other extensions, including
 uppercase `.MD` and names such as `.markdown`, are not listed. An empty root
 produces no output. A missing or unreadable root is an error.
+
+### `root`
+
+`mdhq root` writes the absolute effective storage root followed by a newline.
+`--root <path>` overrides the storage root using the same precedence as `get`
+and `list`. The command loads configuration and reports configuration warnings
+to stderr, but it does not require the resolved root to exist and does not
+create it.
 
 ## Processing pipeline
 

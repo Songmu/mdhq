@@ -23,6 +23,7 @@ mdhq get --no-assets https://example.com/article
 mdhq get --json --header 'Cookie: session=value' https://example.com/article
 mdhq list
 mdhq list --full-path
+mdhq root
 ```
 
 `mdhq get` prints the absolute Markdown path to stdout by default. Warnings
@@ -32,6 +33,8 @@ Markdown path, status, downloaded assets, and warnings.
 `mdhq list` recursively lists `.md` files below the storage root, one per
 line, in sorted root-relative form. Use `-p` or `--full-path` to print absolute
 paths. Directory symbolic links are not followed.
+
+`mdhq root` prints the absolute effective storage root.
 
 The storage root is selected in this order:
 
