@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -42,7 +42,15 @@ try {
     ["--input-type=module", "-e", 'await import("markhq")'],
     { cwd: consumerDirectory, stdio: "inherit" }
   );
-  const version = runNpm(["exec", "--", "markhq", "--version"], {
+  await access(
+    path.join(
+      consumerDirectory,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "markhq.cmd" : "markhq"
+    )
+  );
+  const version = runNpm(["exec", "--offline", "--", "markhq", "--version"], {
     cwd: consumerDirectory,
     encoding: "utf8"
   }).trim();
