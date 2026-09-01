@@ -18,16 +18,17 @@ Runtime requirements:
 
 ## CLI
 
-The executable provides one subcommand:
+The executable provides two subcommands:
 
 ```text
 mdhq get [options] <url>
+mdhq list [options]
 ```
 
-Exactly one URL is accepted per invocation. Parallel or multi-URL processing
-is delegated to external tools such as `xargs`.
+`mdhq get` accepts exactly one URL per invocation. Parallel or multi-URL
+processing is delegated to external tools such as `xargs`.
 
-### Options
+### `get` options
 
 | Option | Description |
 | --- | --- |
@@ -60,6 +61,20 @@ With `--json`, stdout contains an object with this shape:
 - `skipped`: an existing same-identity file was kept.
 
 An error is written to stderr and causes exit status `1`.
+
+### `list`
+
+`mdhq list` recursively lists regular files ending in `.md` below the
+effective storage root. Results are sorted by their root-relative paths and
+written one per line.
+
+By default, paths are relative to the storage root. `-p` or `--full-path`
+prints absolute paths instead. `--root <path>` overrides the storage root
+using the same precedence as `get`.
+
+Directory symbolic links are not followed. Other extensions, including
+uppercase `.MD` and names such as `.markdown`, are not listed. An empty root
+produces no output. A missing or unreadable root is an error.
 
 ## Processing pipeline
 

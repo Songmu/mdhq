@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MdhqError } from "./errors.js";
 import { getPage } from "./get-page.js";
+import { listMarkdownFiles } from "./list-files.js";
 import type { HeaderValue } from "./types.js";
 import { VERSION } from "./version.js";
 
@@ -82,6 +83,22 @@ export function createProgram(io: CliIo = process): Command {
         io.stdout.write(options.json ? `${JSON.stringify(result, null, 2)}\n` : `${result.path}\n`);
       }
     );
+
+  program
+    .command("list")
+    .description("List saved Markdown files.")
+    .option("--root <path>", "storage root")
+    .option("-p, --full-path", "print full paths")
+    .action(async (options: { root?: string; fullPath?: boolean }) => {
+      const files = await listMarkdownFiles({
+        ...(options.root ? { root: options.root } : {}),
+        fullPath: options.fullPath ?? false,
+        onWarning: (warning) => io.stderr.write(`warning: ${warning.message}\n`)
+      });
+      if (files.length > 0) {
+        io.stdout.write(`${files.join("\n")}\n`);
+      }
+    });
   return program;
 }
 
