@@ -8,10 +8,12 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-package-"));
 const packageDirectory = path.join(directory, "package");
 const consumerDirectory = path.join(directory, "consumer");
+const listRoot = path.join(directory, "list-root");
 
 try {
   await mkdir(packageDirectory);
   await mkdir(consumerDirectory);
+  await mkdir(listRoot);
   const runNpm = (arguments_, options = {}) =>
     npmCli
       ? execFileSync(process.execPath, [npmCli, ...arguments_], options)
@@ -56,6 +58,16 @@ try {
   }).trim();
   if (!version) {
     throw new Error("Installed mdhq executable produced no version output");
+  }
+  const listed = runNpm(
+    ["exec", "--offline", "--", "mdhq", "list", "--root", listRoot],
+    {
+      cwd: consumerDirectory,
+      encoding: "utf8"
+    }
+  );
+  if (listed !== "") {
+    throw new Error("Installed mdhq list produced unexpected output");
   }
   await readFile(
     path.join(consumerDirectory, "node_modules", "mdhq", "docs", "specification.md"),

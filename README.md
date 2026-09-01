@@ -21,11 +21,17 @@ mdhq get https://example.com/article
 mdhq get --update https://example.com/article
 mdhq get --no-assets https://example.com/article
 mdhq get --json --header 'Cookie: session=value' https://example.com/article
+mdhq list
+mdhq list --full-path
 ```
 
-By default, successful commands print only the absolute Markdown path to
-stdout. Warnings are written to stderr. `--json` returns the requested URL,
-final source URL, Markdown path, status, downloaded assets, and warnings.
+`mdhq get` prints the absolute Markdown path to stdout by default. Warnings
+are written to stderr. `--json` returns the requested URL, final source URL,
+Markdown path, status, downloaded assets, and warnings.
+
+`mdhq list` recursively lists `.md` files below the storage root, one per
+line, in sorted root-relative form. Use `-p` or `--full-path` to print absolute
+paths. Directory symbolic links are not followed.
 
 The storage root is selected in this order:
 

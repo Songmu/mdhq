@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -135,4 +135,84 @@ describe("CLI", () => {
       expect(stderr).toContain("Invalid header");
     }
   );
+
+  it("lists Markdown files relative to the storage root", async () => {
+    await mkdir(path.join(root, "example.com", "nested"), { recursive: true });
+    await writeFile(path.join(root, "example.com", "z.md"), "");
+    await writeFile(path.join(root, "example.com", "nested", "a.md"), "");
+    await writeFile(path.join(root, "example.com", "ignored.txt"), "");
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+
+    expect(await runCli(["node", "mdhq", "list", "--root", root], io)).toBe(0);
+    expect(stdout).toBe(
+      `${[
+        path.join("example.com", "nested", "a.md"),
+        path.join("example.com", "z.md")
+      ].sort().join("\n")}\n`
+    );
+  });
+
+  it.each(["-p", "--full-path"])("lists full paths with %s", async (option) => {
+    await mkdir(path.join(root, "example.com"));
+    const markdownPath = path.join(root, "example.com", "page.md");
+    await writeFile(markdownPath, "");
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+
+    expect(
+      await runCli(["node", "mdhq", "list", "--root", root, option], io)
+    ).toBe(0);
+    expect(stdout).toBe(`${markdownPath}\n`);
+  });
+
+  it("prints nothing for an empty storage root", async () => {
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+
+    expect(await runCli(["node", "mdhq", "list", "--root", root], io)).toBe(0);
+    expect(stdout).toBe("");
+  });
+
+  it("reports a missing storage root", async () => {
+    let stderr = "";
+    const io: CliIo = {
+      stdout: { write: () => true },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+
+    expect(
+      await runCli(["node", "mdhq", "list", "--root", path.join(root, "missing")], io)
+    ).toBe(1);
+    expect(stderr).toContain("Failed to list storage root");
+  });
 });
