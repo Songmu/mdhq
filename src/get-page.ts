@@ -116,6 +116,8 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       }
     : converted.metadata;
   const transformed = transformMarkdown(converted.markdown, finalUrl.href);
+  const assetHttp =
+    requested.origin === finalUrl.origin ? http : { ...http, headers: [] };
   const localized = await localizeAssets({
     markdown: transformed.markdown,
     imageUrls: transformed.imageUrls,
@@ -123,7 +125,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     markdownPath,
     root,
     baseUrl: finalUrl.href,
-    http,
+    http: assetHttp,
     warn
   });
   const now = options.now?.() ?? new Date();

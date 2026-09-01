@@ -10,9 +10,14 @@ describe("getPage", () => {
   let server: ReturnType<typeof createServer>;
   let baseUrl: string;
   let root: string;
+  let crossOriginTarget: string | undefined;
 
   beforeEach(async () => {
     server = createServer((request, response) => {
+      if (request.url === "/cross-origin" && crossOriginTarget) {
+        response.writeHead(302, { location: crossOriginTarget }).end();
+        return;
+      }
       if (request.url === "/image.png") {
         response.writeHead(200, { "content-type": "image/png" }).end(
           Buffer.from([0x89, 0x50, 0x4e, 0x47])
@@ -69,5 +74,45 @@ describe("getPage", () => {
       useAsync: false
     });
     expect(skipped.status).toBe("skipped");
+  });
+
+  it("does not restore caller headers for assets after a cross-origin redirect", async () => {
+    const received: Array<{ url: string; authorization?: string }> = [];
+    const target = createServer((request, response) => {
+      received.push({
+        url: request.url ?? "",
+        ...(request.headers.authorization
+          ? { authorization: request.headers.authorization }
+          : {})
+      });
+      if (request.url === "/image.png") {
+        response
+          .writeHead(200, { "content-type": "image/png" })
+          .end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        return;
+      }
+      response
+        .writeHead(200, { "content-type": "text/html" })
+        .end(
+          "<html><head><title>Redirected</title></head><body><article><p>Redirected article content.</p><img src=\"/image.png\" alt=\"Image\"></article></body></html>"
+        );
+    });
+    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
+    const address = target.address() as AddressInfo;
+    crossOriginTarget = `http://127.0.0.1:${address.port}/article`;
+    try {
+      await getPage({
+        url: `${baseUrl}/cross-origin`,
+        root,
+        headers: [{ name: "Authorization", value: "Bearer secret" }],
+        useAsync: false
+      });
+      expect(received).toEqual([
+        { url: "/article" },
+        { url: "/image.png" }
+      ]);
+    } finally {
+      await new Promise<void>((resolve) => target.close(() => resolve()));
+    }
   });
 });

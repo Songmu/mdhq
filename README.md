@@ -84,6 +84,12 @@ const saved = await getPage({
 `getPage` fetches, converts, localizes images, adds frontmatter, and saves the
 document.
 
+## Documentation
+
+- [Current specification](docs/specification.md)
+- [Configuration reference](docs/configuration.md)
+- [Library API reference](docs/library-api.md)
+
 ## Development
 
 ```sh
