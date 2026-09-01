@@ -19,6 +19,7 @@ npm install --global markhq
 ```sh
 markhq get https://example.com/article
 markhq get --update https://example.com/article
+markhq get --no-assets https://example.com/article
 markhq get --json --header 'Cookie: session=value' https://example.com/article
 ```
 
@@ -40,6 +41,7 @@ The configuration file is
 ```json
 {
   "root": "/path/to/markhq",
+  "assets": false,
   "useAsync": true,
   "frontmatter": {
     "exclude": ["description"],
@@ -76,13 +78,15 @@ const converted = await convertHtml({
 
 const saved = await getPage({
   url: "https://example.com/article",
-  root: "/path/to/markhq"
+  root: "/path/to/markhq",
+  assets: false
 });
 ```
 
 `convertHtml` performs extraction without fetching or writing files.
-`getPage` fetches, converts, localizes images, adds frontmatter, and saves the
-document.
+`getPage` fetches, converts, optionally localizes images, adds frontmatter,
+and saves the document. Set `assets: false` or use `--no-assets` to keep
+absolute image URLs without creating `_assets`.
 
 ## Documentation
 

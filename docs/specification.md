@@ -350,6 +350,14 @@ For images:
 - non-HTTP(S) images such as `data:` URLs are left unchanged and do not
   produce asset warnings
 
+Asset localization is enabled by default. It can be disabled with the
+top-level configuration field `assets: false`, library option
+`GetPageOptions.assets: false`, or CLI option `--no-assets`. The library
+option and CLI option take precedence over configuration. When disabled,
+HTTP(S) image destinations are kept as absolute URLs, the representative
+image remains an absolute frontmatter URL, the result `assets` array is empty,
+and `_assets` is not created.
+
 markhq does not rewrite ordinary links to other locally stored Markdown
 files.
 

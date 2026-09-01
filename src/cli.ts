@@ -53,6 +53,7 @@ export function createProgram(io: CliIo = process): Command {
     .description("Fetch and save one web page.")
     .argument("<url>")
     .option("--root <path>", "storage root")
+    .option("--no-assets", "do not download images")
     .option("--update", "update an existing page")
     .option("--user-agent <value>", "HTTP User-Agent")
     .option("--header <header>", "additional HTTP header", collect, [])
@@ -62,6 +63,7 @@ export function createProgram(io: CliIo = process): Command {
         url: string,
         options: {
           root?: string;
+          assets?: boolean;
           update?: boolean;
           userAgent?: string;
           header: string[];
@@ -71,6 +73,7 @@ export function createProgram(io: CliIo = process): Command {
         const result = await getPage({
           url,
           ...(options.root ? { root: options.root } : {}),
+          ...(options.assets === false ? { assets: false } : {}),
           update: options.update ?? false,
           ...(options.userAgent ? { userAgent: options.userAgent } : {}),
           headers: parseHeaders(options.header),

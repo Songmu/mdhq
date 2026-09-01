@@ -39,6 +39,7 @@ export interface GetPageOptions {
   url: string | URL;
   root?: string;
   configPath?: string;
+  assets?: boolean;
   update?: boolean;
   headers?: HeaderValue[];
   userAgent?: string;

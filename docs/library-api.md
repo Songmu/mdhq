@@ -104,6 +104,7 @@ interface GetPageOptions {
   url: string | URL;
   root?: string;
   configPath?: string;
+  assets?: boolean;
   update?: boolean;
   headers?: HeaderValue[];
   userAgent?: string;
@@ -121,6 +122,7 @@ interface GetPageOptions {
 | `url` | Required HTTP or HTTPS page URL. |
 | `root` | Highest-precedence library storage root. |
 | `configPath` | Override the default XDG configuration path. |
+| `assets` | Download and localize images when `true`; overrides configuration and defaults to `true`. When `false`, image destinations remain absolute and `_assets` is not created. |
 | `update` | Replace an existing same-identity document when `true`; defaults to `false`. |
 | `headers` | Additional page headers. Sent only while requests remain on the initial page origin. A cross-origin page redirect permanently disables them for later page and asset requests in that operation. |
 | `userAgent` | Override the configured or built-in User-Agent. |

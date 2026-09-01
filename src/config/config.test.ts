@@ -20,12 +20,14 @@ describe("configuration", () => {
       file,
       JSON.stringify({
         root: "/tmp/data",
+        assets: false,
         future: true,
         defuddle: { useAsync: false, futureOption: true }
       })
     );
     const result = await loadConfig(file);
     expect(result.config.root).toBe("/tmp/data");
+    expect(result.config.assets).toBe(false);
     expect(result.warnings).toHaveLength(2);
   });
 

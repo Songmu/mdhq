@@ -34,6 +34,7 @@ configuration, and path configuration objects.
   "timeoutMs": 30000,
   "maxResponseBytes": 20971520,
   "maxRedirects": 10,
+  "assets": false,
   "useAsync": true,
   "defuddle": {
     "removeSmallImages": true,
@@ -72,6 +73,7 @@ configuration, and path configuration objects.
 | `timeoutMs` | positive integer | Timeout in milliseconds for each markhq HTTP request attempt. |
 | `maxResponseBytes` | positive integer | Maximum buffered bytes for each page or asset response. |
 | `maxRedirects` | non-negative integer | Maximum redirect count for each page or asset request. |
+| `assets` | boolean | Download images into `_assets`; defaults to `true`. |
 | `useAsync` | boolean | Legacy fallback for Defuddle asynchronous extractors. |
 | `defuddle` | object | Defuddle extraction options. |
 | `frontmatter` | object | Frontmatter exclusions and configured values. |
@@ -103,6 +105,11 @@ Otherwise configuration overrides the built-in default.
 
 The CLI `--user-agent` option is passed as `GetPageOptions.userAgent` and
 therefore overrides configuration `userAgent`.
+
+The CLI `--no-assets` option passes `GetPageOptions.assets: false` and
+therefore overrides configuration `assets`. When asset localization is
+disabled, image destinations remain absolute URLs, the result contains no
+asset entries, and markhq does not create `_assets`.
 
 Generic CLI `--header` values and library `headers` values are appended after
 markhq creates its `Accept` and User-Agent headers. A generic `User-Agent` or
