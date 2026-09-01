@@ -2,7 +2,11 @@ import { loadConfig, resolveRoot } from "./config/config.js";
 import { resolveHostConfig } from "./config/match.js";
 import { convertHtml } from "./convert/convert-html.js";
 import { localizeAssets } from "./assets/localize.js";
-import { httpDateToRfc3339, rfc3339ToHttpDate } from "./date.js";
+import {
+  httpDateToRfc3339,
+  isRfc3339DateTime,
+  rfc3339ToHttpDate
+} from "./date.js";
 import { MdhqError } from "./errors.js";
 import {
   buildFrontmatter,
@@ -120,7 +124,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       sourceUrl: requestedExisting.sourceUrl,
       requestedUrl,
       created:
-        requestedExisting.created && !Number.isNaN(Date.parse(requestedExisting.created))
+        isRfc3339DateTime(requestedExisting.created)
           ? requestedExisting.created
           : now,
       modified: now,
@@ -229,7 +233,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         ...(metadata.image ? { representativeImage: metadata.image } : {})
       };
   const created =
-    existing?.created && !Number.isNaN(Date.parse(existing.created))
+    isRfc3339DateTime(existing?.created)
       ? existing.created
       : now;
   const contentDigest = markdownContentDigest(localized.markdown);

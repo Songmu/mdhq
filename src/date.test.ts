@@ -28,11 +28,22 @@ describe("date utilities", () => {
     expect(httpDateToRfc3339("2026-08-31")).toBeUndefined();
     expect(httpDateToRfc3339("Sun, 31 Aug 2026 03:00:00 GMT")).toBeUndefined();
     expect(rfc3339ToHttpDate("2026-02-30T03:00:00Z")).toBeUndefined();
-    expect(httpDateToRfc3339("Sunday, 06-Nov-94 08:49:37 GMT")).toBe(
+    expect(
+      httpDateToRfc3339(
+        "Sunday, 06-Nov-94 08:49:37 GMT",
+        new Date("2026-09-01T00:00:00Z")
+      )
+    ).toBe(
       "1994-11-06T08:49:37Z"
     );
     expect(httpDateToRfc3339("Sun Nov  6 08:49:37 1994")).toBe(
       "1994-11-06T08:49:37Z"
     );
+    expect(
+      httpDateToRfc3339(
+        "Saturday, 06-Nov-76 08:49:37 GMT",
+        new Date("2026-09-01T00:00:00Z")
+      )
+    ).toBe("1976-11-06T08:49:37Z");
   });
 });

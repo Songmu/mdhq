@@ -245,4 +245,27 @@ describe("fetchHtml", () => {
       await new Promise<void>((resolve) => redirectServer.close(() => resolve()));
     }
   });
+
+  it("rejects a 304 received after a redirect", async () => {
+    const redirectServer = createServer((request, response) => {
+      if (request.url === "/start") {
+        response.writeHead(302, { location: "/final" }).end();
+        return;
+      }
+      response.writeHead(304).end();
+    });
+    await new Promise<void>((resolve) =>
+      redirectServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = redirectServer.address() as AddressInfo;
+    try {
+      await expect(
+        fetchHtml(`http://127.0.0.1:${address.port}/start`, {
+          conditional: { etag: '"stored"' }
+        })
+      ).rejects.toMatchObject({ code: "FETCH_FAILED" });
+    } finally {
+      await new Promise<void>((resolve) => redirectServer.close(() => resolve()));
+    }
+  });
 });

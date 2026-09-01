@@ -98,7 +98,7 @@ function parseRfc3339(value: string): number | undefined {
   return utcTimestamp(year, month, day, hour, minute, second) - offsetMinutes * 60_000;
 }
 
-function parseHttpDate(value: string): number | undefined {
+function parseHttpDate(value: string, now: Date): number | undefined {
   const imf = IMF_FIXDATE.exec(value);
   if (imf) {
     const weekday = capture(imf, 1);
@@ -132,12 +132,28 @@ function parseHttpDate(value: string): number | undefined {
     const hourValue = capture(rfc850, 5);
     const minuteValue = capture(rfc850, 6);
     const secondValue = capture(rfc850, 7);
-    const currentYear = new Date().getUTCFullYear();
+    const month = MONTHS.get(monthName) ?? 0;
+    const currentYear = now.getUTCFullYear();
     let year = Math.floor(currentYear / 100) * 100 + Number(shortYearValue);
-    if (year > currentYear + 50) {
+    const candidateValues = [
+      year,
+      month,
+      Number(dayValue),
+      Number(hourValue),
+      Number(minuteValue),
+      Number(secondValue)
+    ] as const;
+    if (
+      !validCalendarDate(candidateValues[0], candidateValues[1], candidateValues[2]) ||
+      !validTime(candidateValues[3], candidateValues[4], candidateValues[5])
+    ) {
+      return undefined;
+    }
+    const cutoff = new Date(now.getTime());
+    cutoff.setUTCFullYear(cutoff.getUTCFullYear() + 50);
+    if (utcTimestamp(...candidateValues) > cutoff.getTime()) {
       year -= 100;
     }
-    const month = MONTHS.get(monthName) ?? 0;
     const values = [
       year,
       month,
@@ -146,9 +162,6 @@ function parseHttpDate(value: string): number | undefined {
       Number(minuteValue),
       Number(secondValue)
     ] as const;
-    if (!validCalendarDate(values[0], values[1], values[2]) || !validTime(values[3], values[4], values[5])) {
-      return undefined;
-    }
     const timestamp = utcTimestamp(...values);
     return validWeekday(timestamp, weekday, true) ? timestamp : undefined;
   }
@@ -214,12 +227,19 @@ export function normalizeSourceDate(value: string | undefined): string | undefin
   return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}${zone}`;
 }
 
-export function httpDateToRfc3339(value: string | undefined): string | undefined {
+export function isRfc3339DateTime(value: string | undefined): value is string {
+  return value !== undefined && parseRfc3339(value) !== undefined;
+}
+
+export function httpDateToRfc3339(
+  value: string | undefined,
+  now = new Date()
+): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) {
     return undefined;
   }
-  const timestamp = parseHttpDate(trimmed);
+  const timestamp = parseHttpDate(trimmed, now);
   if (timestamp === undefined) {
     return undefined;
   }

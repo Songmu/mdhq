@@ -167,7 +167,7 @@ export async function fetchResource(
     }
     const etag = response.headers.get("etag")?.trim() || undefined;
     const lastModified = response.headers.get("last-modified")?.trim() || undefined;
-    if (response.status === 304 && options.allowNotModified) {
+    if (response.status === 304 && options.allowNotModified && redirects === 0) {
       await response.body?.cancel().catch(() => undefined);
       return {
         body: new Uint8Array(),

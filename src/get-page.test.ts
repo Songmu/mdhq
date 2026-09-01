@@ -360,6 +360,35 @@ describe("getPage", () => {
     );
   });
 
+  it("replaces an invalid stored created timestamp during a 304 update", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const document = await readFile(first.path, "utf8");
+    await writeFile(
+      first.path,
+      document.replace(
+        /^created: .+$/mu,
+        "created: 2026-02-30T00:00:00Z"
+      )
+    );
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false,
+      now: () => new Date("2026-09-01T16:00:00+09:00")
+    });
+    expect(updated.status).toBe("unchanged");
+    expect(
+      parseDocument(await readFile(updated.path, "utf8"))?.frontmatter.created
+    ).toMatch(/^2026-09-01T/u);
+  });
+
   it("falls back to Last-Modified when ETag is absent", async () => {
     const first = await getPage({
       url: `${baseUrl}/conditional-last-modified`,
