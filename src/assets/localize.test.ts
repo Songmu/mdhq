@@ -19,6 +19,10 @@ describe("localizeAssets", () => {
         response.writeHead(200, { "content-type": "text/html" }).end("<html>login</html>");
         return;
       }
+      if (request.url === "/not-modified.png") {
+        response.writeHead(304).end();
+        return;
+      }
       response
         .writeHead(200, { "content-type": "image/png" })
         .end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -107,5 +111,26 @@ describe("localizeAssets", () => {
     } finally {
       await new Promise<void>((resolve) => jpegServer.close(() => resolve()));
     }
+  });
+
+  it("does not replace an existing asset with an empty 304 response", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const sourceUrl = `${baseUrl}/not-modified.png`;
+    const digest = createHash("md5").update(sourceUrl).digest("hex");
+    const assetPath = path.join(root, "_assets", `${digest}.png`);
+    const existing = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    await mkdir(path.dirname(assetPath), { recursive: true });
+    await writeFile(assetPath, existing);
+    const result = await localizeAssets({
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl,
+      http: { headers: [{ name: "If-None-Match", value: '"page"' }] },
+      warn: () => undefined
+    });
+    expect(result.assets[0]?.status).toBe("failed");
+    expect(await readFile(assetPath)).toEqual(existing);
   });
 });

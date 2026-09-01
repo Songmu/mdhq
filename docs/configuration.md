@@ -194,7 +194,6 @@ desired:
   }
 }
 ```
-- `modified`
 
 Protected fields cannot be removed or overridden by configuration.
 

@@ -89,8 +89,9 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     value: string | undefined,
     fallback?: string
   ): string | undefined => {
+    const validFallback = rfc3339ToHttpDate(fallback) ? fallback : undefined;
     if (!value) {
-      return rfc3339ToHttpDate(fallback) ? fallback : undefined;
+      return validFallback;
     }
     const normalized = httpDateToRfc3339(value);
     if (!normalized) {
@@ -99,7 +100,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         message: `Invalid Last-Modified response header: ${value}`,
         url: fetched.finalUrl
       });
-      return fallback;
+      return validFallback;
     }
     return normalized;
   };

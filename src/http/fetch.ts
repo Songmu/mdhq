@@ -16,6 +16,7 @@ export interface FetchResourceOptions {
   maxResponseBytes?: number;
   maxRedirects?: number;
   acceptedContentTypes?: string[];
+  allowNotModified?: boolean;
   conditional?: {
     etag?: string;
     lastModified?: string;
@@ -165,7 +166,7 @@ export async function fetchResource(
     }
     const etag = response.headers.get("etag")?.trim() || undefined;
     const lastModified = response.headers.get("last-modified")?.trim() || undefined;
-    if (response.status === 304) {
+    if (response.status === 304 && options.allowNotModified) {
       await response.body?.cancel().catch(() => undefined);
       return {
         body: new Uint8Array(),
@@ -237,6 +238,7 @@ export async function fetchHtml(
 ): Promise<FetchedHtml> {
   const resource = await fetchResource(input, {
     ...options,
+    allowNotModified: true,
     acceptedContentTypes: ["text/html", "application/xhtml+xml"]
   });
   if (resource.notModified) {
