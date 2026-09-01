@@ -18,9 +18,13 @@ describe("getPage", () => {
   let crossOriginTarget: string | undefined;
   let changingBody: string;
   let includeChangingEtag: boolean;
+  let pageUnavailable: boolean;
   let removeBeforeNotModified: string | undefined;
   let replaceBeforeNotModified:
     | { path: string; content: string; responseBody: string }
+    | undefined;
+  let replaceBeforeChangingResponse:
+    | { path: string; content: string; nextBody: string }
     | undefined;
   let conditionalHeaders: Array<{
     path: string;
@@ -31,8 +35,10 @@ describe("getPage", () => {
   beforeEach(async () => {
     changingBody = "First version";
     includeChangingEtag = false;
+    pageUnavailable = false;
     removeBeforeNotModified = undefined;
     replaceBeforeNotModified = undefined;
+    replaceBeforeChangingResponse = undefined;
     conditionalHeaders = [];
     server = createServer((request, response) => {
       conditionalHeaders.push({
@@ -102,15 +108,55 @@ describe("getPage", () => {
           );
         return;
       }
-      if (request.url === "/changing") {
+      if (request.url === "/gone") {
+        if (pageUnavailable) {
+          response
+            .writeHead(404, { "content-type": "text/html" })
+            .end("<html><body>Not found</body></html>");
+          return;
+        }
         response
           .writeHead(200, {
             "content-type": "text/html",
-            ...(includeChangingEtag ? { etag: '"temporary"' } : {})
+            etag: '"available-v1"'
           })
           .end(
-            `<html><head><title>Changing</title></head><body><article><p>${changingBody}</p></article></body></html>`
+            "<html><head><title>Available</title></head><body><article><p>Original article remains available locally.</p></article></body></html>"
           );
+        return;
+      }
+      if (request.url === "/redirect-changing") {
+        response.writeHead(302, { location: "/changing" }).end();
+        return;
+      }
+      if (request.url === "/changing") {
+        const responseBody = changingBody;
+        const sendResponse = (): void => {
+          response
+            .writeHead(200, {
+              "content-type": "text/html",
+              ...(includeChangingEtag ? { etag: '"temporary"' } : {})
+            })
+            .end(
+              `<html><head><title>Changing</title></head><body><article><p>${responseBody}</p></article></body></html>`
+            );
+        };
+        if (replaceBeforeChangingResponse) {
+          const replacement = replaceBeforeChangingResponse;
+          replaceBeforeChangingResponse = undefined;
+          void writeFile(replacement.path, replacement.content)
+            .then(() => {
+              changingBody = replacement.nextBody;
+              sendResponse();
+            })
+            .catch((error: unknown) =>
+              response.destroy(
+                error instanceof Error ? error : new Error(String(error))
+              )
+            );
+          return;
+        }
+        sendResponse();
         return;
       }
       if (request.url === "/caller-conditional") {
@@ -402,7 +448,7 @@ describe("getPage", () => {
     );
   });
 
-  it("retries unconditionally when the destination changes before a 304 save", async () => {
+  it("restarts from the latest snapshot when the destination changes before a 304 save", async () => {
     const first = await getPage({
       url: `${baseUrl}/conditional-etag`,
       root,
@@ -439,11 +485,75 @@ describe("getPage", () => {
     ).toEqual([
       { path: "/conditional-etag" },
       { path: "/conditional-etag", etag: '"v1"' },
-      { path: "/conditional-etag" }
+      { path: "/conditional-etag", etag: '"v2"' }
     ]);
     const document = parseDocument(await readFile(updated.path, "utf8"));
     expect(document?.frontmatter.etag).toBe('"v2"');
     expect(document?.markdown).toContain(concurrentBody);
+  });
+
+  it("restarts a 200 update when the destination changes during conversion", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    const concurrentBody = "Concurrent second version.";
+    replaceBeforeChangingResponse = {
+      path: first.path,
+      nextBody: concurrentBody,
+      content: serializeDocument(
+        {
+          ...before?.frontmatter,
+          content_digest: markdownContentDigest(`${concurrentBody}\n`)
+        },
+        concurrentBody
+      )
+    };
+    const updated = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.status).toBe("unchanged");
+    expect(
+      conditionalHeaders.filter((request) => request.path === "/changing")
+    ).toHaveLength(3);
+    expect(
+      parseDocument(await readFile(updated.path, "utf8"))?.markdown
+    ).toContain(concurrentBody);
+  });
+
+  it("rebases a redirected update onto the destination snapshot before conversion", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    changingBody = "Redirected second version.";
+    const updated = await getPage({
+      url: `${baseUrl}/redirect-changing`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.path).toBe(first.path);
+    expect(updated.status).toBe("updated");
+    expect(
+      conditionalHeaders.filter((request) => request.path === "/changing")
+    ).toHaveLength(3);
+    const document = parseDocument(await readFile(updated.path, "utf8"));
+    expect(document?.frontmatter.source).toBe(`${baseUrl}/changing`);
+    expect(document?.frontmatter.requested_url).toBe(
+      `${baseUrl}/redirect-changing`
+    );
+    expect(document?.markdown).toContain("Redirected second version.");
   });
 
   it("replaces an invalid stored created timestamp during a 304 update", async () => {
@@ -495,6 +605,27 @@ describe("getPage", () => {
       lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
     });
     expect(document?.frontmatter.last_modified).toBe("2026-08-31T03:00:00Z");
+  });
+
+  it("preserves the existing document when an update returns 404", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/gone`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const before = await readFile(first.path, "utf8");
+    pageUnavailable = true;
+    await expect(
+      getPage({
+        url: `${baseUrl}/gone`,
+        root,
+        assets: false,
+        update: true,
+        useAsync: false
+      })
+    ).rejects.toMatchObject({ code: "FETCH_FAILED" });
+    expect(await readFile(first.path, "utf8")).toBe(before);
   });
 
   it("distinguishes equal and changed Markdown bodies on 200 responses", async () => {

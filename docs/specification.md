@@ -140,10 +140,17 @@ and asset downloads, updates `modified`, and returns `unchanged`. A 200
 response replaces stored validators with the response values; validators that
 are absent from a 200 response are removed.
 
-Before saving a 304 result, mdhq verifies that the destination still matches
-the exact document snapshot used for the conditional request. If another
-writer changed it while the request was in flight, mdhq leaves that document
-untouched and retries the page with an unconditional GET.
+Any other non-success response, including `404 Not Found` and `410 Gone`,
+fails the update before conversion or storage. The existing Markdown document,
+frontmatter timestamps, validators, and localized assets remain unchanged.
+
+All destination writes are serialized with a per-file cross-process lock.
+Before saving either a 304 or 200 update, mdhq verifies that the destination
+still matches the exact document snapshot read before the request. If another
+writer changed it while the request or conversion was in flight, mdhq leaves
+that document untouched and restarts the complete update from the latest
+snapshot. Retries are bounded to two restarts; repeated contention fails
+without overwriting the competing update.
 
 Page responses must have one of these media types:
 
@@ -413,7 +420,7 @@ files.
 Assets are stored under:
 
 ```text
-<root>/_assets/<md5-of-final-url>.<extension>
+<root>/_assets/<sha256-of-content>.<extension>
 ```
 
 The hash input is the complete final asset URL after redirects, including its
@@ -447,11 +454,12 @@ even when the URL looks like an image.
 Up to six assets are fetched concurrently. Result ordering still follows the
 first occurrence in the document.
 
-Asset content is first written completely to a same-directory temporary file.
-A new destination is published without replacing an existing file. When the
-deterministic path already exists, its bytes are compared with the fetched
-content. Identical content is reported as `reused`; differing content is
-atomically replaced and reported as `saved`.
+Asset paths are immutable and content-addressed by the SHA-256 digest of the
+fetched bytes. Content is first written completely to a same-directory
+temporary file and a new destination is published without replacing an
+existing file. When the deterministic path already exists, identical content
+is reported as `reused`; differing content is treated as a digest collision
+and reported as an asset failure.
 
 An individual asset failure:
 
@@ -541,29 +549,36 @@ Without `update`:
 
 With `update`:
 
+- all mdhq writes to the same destination are serialized by a transient
+  cross-process lock
 - a missing destination is still created exclusively
-- a concurrently created same-identity destination returns `skipped`
-- a concurrently created different-identity destination returns
-  `PATH_COLLISION`
 - an existing same-identity document is written to a temporary file in the
   same directory and replaced with an atomic rename
+- the exact serialized snapshot read before fetching is checked again while
+  holding the destination lock
+- a conflicting same-identity write restarts the complete update from the
+  latest snapshot, with at most two restarts
+- a different-identity destination returns `PATH_COLLISION`
 - an HTTP 304 or a 200 response with an unchanged normalized Markdown body
   returns `unchanged`
 - a 200 response with a changed normalized Markdown body returns `updated`
-- the identity is checked again immediately before replacement
 - temporary files are removed after success or failure
 
-No persistent lock files are created.
+Lock directories are removed when the write completes. Stale locks left by a
+terminated process are recovered by the lock implementation.
 
 Initial Markdown and asset publication requires filesystem hard-link support.
 This is supported by standard Windows NTFS volumes and common Linux and macOS
 filesystems. mdhq returns a storage or asset error rather than degrading to
 a partially visible copy on a filesystem that rejects hard links.
 
-Simultaneous updates of the same URL identity are allowed. Each replacement
-is atomic, but mdhq does not provide compare-and-swap semantics between
-same-identity writers. The last successful rename determines the final
-document.
+Simultaneous mdhq updates of the same destination use compare-and-swap
+semantics: a writer can commit only while the destination still matches the
+snapshot that authorized its fetch. Localized assets are immutable and
+content-addressed, so a losing update cannot replace bytes referenced by the
+winning document. Programs that modify storage files directly do not
+participate in mdhq's lock protocol and should not edit a destination while an
+mdhq write is in progress.
 
 ## Warnings and errors
 

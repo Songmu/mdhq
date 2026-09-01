@@ -27,6 +27,15 @@ import {
 
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   const requestedUrl = parseHttpUrl(options.url).href;
+  return getPageAttempt(options, requestedUrl, requestedUrl, 2);
+}
+
+async function getPageAttempt(
+  options: GetPageOptions,
+  requestedUrl: string,
+  fetchUrl: string,
+  retriesRemaining: number
+): Promise<GetPageResult> {
   const loaded = await loadConfig(options.configPath);
   const warnings: MdhqWarning[] = [];
   const warn = (warning: MdhqWarning): void => {
@@ -37,7 +46,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     warn(warning);
   }
   const root = resolveRoot(options.root, loaded.config);
-  const requested = new URL(requestedUrl);
+  const requested = new URL(fetchUrl);
   const requestedConfig = resolveHostConfig(
     normalizeHost(requested),
     requested.pathname,
@@ -51,7 +60,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   });
   const requestedExisting = await inspectDestination(
     requestedPath,
-    requestedUrl,
+    fetchUrl,
     requestedEntryKey,
     root
   );
@@ -81,7 +90,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   if (
     options.update &&
     requestedExisting &&
-    sameHttpTarget(requestedExisting.sourceUrl, requestedUrl)
+    sameHttpTarget(requestedExisting.sourceUrl, fetchUrl)
   ) {
     if (requestedExisting.etag) {
       conditional = { etag: requestedExisting.etag };
@@ -92,7 +101,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       }
     }
   }
-  let fetched = await fetchHtml(requestedUrl, {
+  const fetched = await fetchHtml(fetchUrl, {
     ...http,
     ...(conditional ? { conditional } : {})
   });
@@ -120,7 +129,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     if (!requestedExisting || !conditional) {
       throw new MdhqError(
         "FETCH_FAILED",
-        `HTTP 304 for ${requestedUrl} without a matching stored validator`
+        `HTTP 304 for ${fetchUrl} without a matching stored validator`
       );
     }
     const lastModified = normalizeLastModified(
@@ -151,34 +160,28 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       root,
       ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
     });
-    if (storageStatus !== "conflicted") {
-      return {
+    if (storageStatus === "conflicted") {
+      if (retriesRemaining === 0) {
+        throw new MdhqError(
+          "STORAGE_ERROR",
+          `Destination changed repeatedly while updating ${requestedPath}`
+        );
+      }
+      return getPageAttempt(
+        options,
         requestedUrl,
-        sourceUrl: requestedExisting.sourceUrl,
-        path: requestedPath,
-        status: storageStatus === "updated" ? "unchanged" : storageStatus,
-        assets: [],
-        warnings
-      };
-    }
-    fetched = await fetchHtml(requestedUrl, {
-      ...http,
-      ...(headers
-        ? {
-            headers: headers.filter(
-              (header) =>
-                header.name.toLowerCase() !== "if-none-match" &&
-                header.name.toLowerCase() !== "if-modified-since"
-            )
-          }
-        : {})
-    });
-    if (fetched.notModified) {
-      throw new MdhqError(
-        "FETCH_FAILED",
-        `HTTP 304 for unconditional retry of ${requestedUrl}`
+        fetchUrl,
+        retriesRemaining - 1
       );
     }
+    return {
+      requestedUrl,
+      sourceUrl: requestedExisting.sourceUrl,
+      path: requestedPath,
+      status: storageStatus === "updated" ? "unchanged" : storageStatus,
+      assets: [],
+      warnings
+    };
   }
   const finalUrl = new URL(fetched.finalUrl);
   const matchedConfig = resolveHostConfig(
@@ -198,6 +201,24 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     entryQueryKey,
     root
   );
+  if (
+    options.update &&
+    existing &&
+    markdownPath !== requestedPath
+  ) {
+    if (retriesRemaining === 0) {
+      throw new MdhqError(
+        "STORAGE_ERROR",
+        `Redirect destination changed repeatedly while updating ${markdownPath}`
+      );
+    }
+    return getPageAttempt(
+      options,
+      requestedUrl,
+      finalUrl.href,
+      retriesRemaining - 1
+    );
+  }
   if (existing && !options.update) {
     return {
       requestedUrl,
@@ -209,6 +230,8 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     };
   }
 
+  const expectedExisting =
+    markdownPath === requestedPath ? requestedExisting : existing;
   const converted = await convertHtml({
     html: fetched.html,
     url: finalUrl,
@@ -262,8 +285,8 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         ...(metadata.image ? { representativeImage: metadata.image } : {})
       };
   const created =
-    isRfc3339DateTime(existing?.created)
-      ? existing.created
+    isRfc3339DateTime(expectedExisting?.created)
+      ? expectedExisting.created
       : now;
   const contentDigest = markdownContentDigest(localized.markdown);
   const lastModified = normalizeLastModified(fetched.lastModified);
@@ -290,13 +313,24 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     content,
     sourceUrl: finalUrl.href,
     update: options.update ?? false,
+    ...(options.update
+      ? { expectedContent: expectedExisting?.content ?? null }
+      : {}),
     root,
     ...(entryQueryKey ? { entryQueryKey } : {})
   });
   if (storageStatus === "conflicted") {
-    throw new MdhqError(
-      "STORAGE_ERROR",
-      `Unexpected destination conflict while saving ${markdownPath}`
+    if (retriesRemaining === 0) {
+      throw new MdhqError(
+        "STORAGE_ERROR",
+        `Destination changed repeatedly while updating ${markdownPath}`
+      );
+    }
+    return getPageAttempt(
+      options,
+      requestedUrl,
+      fetchUrl,
+      retriesRemaining - 1
     );
   }
   return {
@@ -304,7 +338,8 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     sourceUrl: finalUrl.href,
     path: markdownPath,
     status:
-      storageStatus === "updated" && existing?.contentDigest === contentDigest
+      storageStatus === "updated" &&
+      expectedExisting?.contentDigest === contentDigest
         ? "unchanged"
         : storageStatus,
     assets: localized.assets,

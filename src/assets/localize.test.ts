@@ -11,8 +11,10 @@ describe("localizeAssets", () => {
   let server: ReturnType<typeof createServer>;
   let baseUrl: string;
   let receivedAuthorization: string | undefined;
+  let imageBody: Buffer;
 
   beforeEach(async () => {
+    imageBody = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
     server = createServer((request, response) => {
       receivedAuthorization = request.headers.authorization;
       if (request.url === "/bad.png") {
@@ -25,7 +27,7 @@ describe("localizeAssets", () => {
       }
       response
         .writeHead(200, { "content-type": "image/png" })
-        .end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        .end(imageBody);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
@@ -71,14 +73,10 @@ describe("localizeAssets", () => {
     expect(result.representativeImageSource).toBeUndefined();
   });
 
-  it("atomically replaces a differing existing asset", async () => {
+  it("uses immutable content-addressed paths when asset bytes change", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
     const sourceUrl = `${baseUrl}/image.png`;
-    const digest = createHash("md5").update(sourceUrl).digest("hex");
-    const assetPath = path.join(root, "_assets", `${digest}.png`);
-    await mkdir(path.dirname(assetPath), { recursive: true });
-    await writeFile(assetPath, new Uint8Array());
-    const result = await localizeAssets({
+    const first = await localizeAssets({
       markdown: `![image](${sourceUrl})`,
       imageUrls: [sourceUrl],
       markdownPath: path.join(root, "example.com", "page.md"),
@@ -86,8 +84,20 @@ describe("localizeAssets", () => {
       baseUrl,
       warn: () => undefined
     });
-    expect(result.assets[0]?.status).toBe("saved");
-    expect((await readFile(assetPath)).byteLength).toBe(4);
+    imageBody = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01]);
+    const second = await localizeAssets({
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl,
+      warn: () => undefined
+    });
+    expect(first.assets[0]?.status).toBe("saved");
+    expect(second.assets[0]?.status).toBe("saved");
+    expect(second.assets[0]?.path).not.toBe(first.assets[0]?.path);
+    expect(await readFile(first.assets[0]?.path ?? "")).toHaveLength(4);
+    expect(await readFile(second.assets[0]?.path ?? "")).toHaveLength(5);
   });
 
   it("accepts a jpeg URL when Content-Type is missing", async () => {
@@ -116,9 +126,9 @@ describe("localizeAssets", () => {
   it("does not replace an existing asset with an empty 304 response", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
     const sourceUrl = `${baseUrl}/not-modified.png`;
-    const digest = createHash("md5").update(sourceUrl).digest("hex");
-    const assetPath = path.join(root, "_assets", `${digest}.png`);
     const existing = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const digest = createHash("sha256").update(existing).digest("hex");
+    const assetPath = path.join(root, "_assets", `${digest}.png`);
     await mkdir(path.dirname(assetPath), { recursive: true });
     await writeFile(assetPath, existing);
     const result = await localizeAssets({

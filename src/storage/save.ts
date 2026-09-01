@@ -3,7 +3,11 @@ import { mkdir, readFile } from "node:fs/promises";
 import { MdhqError } from "../errors.js";
 import { markdownContentDigest, parseDocument } from "../frontmatter/frontmatter.js";
 import { sameUrlIdentity } from "../url/identity.js";
-import { publishFileExclusive, replaceFileAtomic } from "./atomic.js";
+import {
+  publishFileExclusive,
+  replaceFileAtomic,
+  withDestinationLock
+} from "./atomic.js";
 import { assertSafeDestination } from "./path-safety.js";
 
 export interface SaveDocumentOptions {
@@ -11,7 +15,7 @@ export interface SaveDocumentOptions {
   content: string;
   sourceUrl: string;
   update: boolean;
-  expectedContent?: string;
+  expectedContent?: string | null;
   entryQueryKey?: string;
   root?: string;
 }
@@ -105,68 +109,61 @@ export async function saveDocument(
     await assertSafeDestination(options.root, options.path);
   }
   await mkdir(path.dirname(options.path), { recursive: true });
-  const existing = await readExistingDocument(options.path);
-  if (existing) {
-    assertSameIdentity(existing, options.sourceUrl, options.entryQueryKey, options.path);
-    if (
-      options.expectedContent !== undefined &&
-      existing.content !== options.expectedContent
-    ) {
-      return "conflicted";
-    }
-    if (!options.update) {
-      return "skipped";
-    }
-  }
-
-  if (!options.update) {
-    try {
-      if (await publishFileExclusive(options.path, options.content, options.root)) {
-        return "saved";
-      }
-      assertSameIdentity(
-        await readExistingDocument(options.path),
-        options.sourceUrl,
-        options.entryQueryKey,
-        options.path
-      );
-      return "skipped";
-    } catch (error) {
-      if (error instanceof MdhqError) {
-        throw error;
-      }
-      throw new MdhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
-        cause: error
-      });
-    }
-  }
-
-  if (!existing) {
-    try {
-      if (await publishFileExclusive(options.path, options.content, options.root)) {
-        return "saved";
-      }
-      assertSameIdentity(
-        await readExistingDocument(options.path),
-        options.sourceUrl,
-        options.entryQueryKey,
-        options.path
-      );
-      return "skipped";
-    } catch (error) {
-      if (error instanceof MdhqError) {
-        throw error;
-      }
-      throw new MdhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
-        cause: error
-      });
-    }
-  }
-
   try {
-    await replaceFileAtomic(options.path, options.content, {
-      ...(options.root ? { root: options.root } : {}),
-      beforeCommit: async () => {
+    return await withDestinationLock(
+      options.path,
+      async () => {
+        const existing = await readExistingDocument(options.path);
+        const hasExpectation = options.expectedContent !== undefined;
+        if (
+          hasExpectation &&
+          (existing?.content ?? null) !== options.expectedContent
+        ) {
+          return "conflicted";
+        }
+        if (existing) {
+          assertSameIdentity(
+            existing,
+            options.sourceUrl,
+            options.entryQueryKey,
+            options.path
+          );
+          if (!options.update) {
+            return "skipped";
+          }
+        }
+
+        if (existing) {
+          await replaceFileAtomic(options.path, options.content, {
+            ...(options.root ? { root: options.root } : {}),
+            beforeCommit: async () => {
+              const current = await readExistingDocument(options.path);
+              assertSameIdentity(
+                current,
+                options.sourceUrl,
+                options.entryQueryKey,
+                options.path
+              );
+              if (
+                hasExpectation &&
+                current?.content !== options.expectedContent
+              ) {
+                throw new DestinationChangedError();
+              }
+            }
+          });
+          return "updated";
+        }
+
+        if (
+          await publishFileExclusive(
+            options.path,
+            options.content,
+            options.root
+          )
+        ) {
+          return "saved";
+        }
         const current = await readExistingDocument(options.path);
         assertSameIdentity(
           current,
@@ -174,15 +171,10 @@ export async function saveDocument(
           options.entryQueryKey,
           options.path
         );
-        if (
-          options.expectedContent !== undefined &&
-          current?.content !== options.expectedContent
-        ) {
-          throw new DestinationChangedError();
-        }
-      }
-    });
-    return "updated";
+        return hasExpectation ? "conflicted" : "skipped";
+      },
+      options.root
+    );
   } catch (error) {
     if (error instanceof DestinationChangedError) {
       return "conflicted";
@@ -190,7 +182,11 @@ export async function saveDocument(
     if (error instanceof MdhqError) {
       throw error;
     }
-    throw new MdhqError("STORAGE_ERROR", `Failed to update ${options.path}`, { cause: error });
+    throw new MdhqError(
+      "STORAGE_ERROR",
+      `Failed to ${options.update ? "update" : "write"} ${options.path}`,
+      { cause: error }
+    );
   }
 }
 
