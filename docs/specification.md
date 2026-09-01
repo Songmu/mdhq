@@ -423,8 +423,9 @@ Assets are stored under:
 <root>/_assets/<sha256-of-content>.<extension>
 ```
 
-The hash input is the complete final asset URL after redirects, including its
-query string.
+The hash input is the complete fetched response body after redirects. The
+asset URL and query string do not affect the path when the response bytes are
+identical.
 
 Downloaded asset candidates are:
 
