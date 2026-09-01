@@ -27,6 +27,7 @@ export interface PageMetadata {
   description?: string;
   author?: string;
   published?: string;
+  updated?: string;
   site?: string;
   domain?: string;
   language?: string;
@@ -63,7 +64,7 @@ export interface GetPageResult {
   requestedUrl: string;
   sourceUrl: string;
   path: string;
-  status: "saved" | "updated" | "skipped";
+  status: "saved" | "updated" | "unchanged" | "skipped";
   assets: AssetResult[];
   warnings: MdhqWarning[];
 }

@@ -2,7 +2,14 @@ import { loadConfig, resolveRoot } from "./config/config.js";
 import { resolveHostConfig } from "./config/match.js";
 import { convertHtml } from "./convert/convert-html.js";
 import { localizeAssets } from "./assets/localize.js";
-import { buildFrontmatter, serializeDocument } from "./frontmatter/frontmatter.js";
+import { httpDateToRfc3339, rfc3339ToHttpDate } from "./date.js";
+import { MdhqError } from "./errors.js";
+import {
+  buildFrontmatter,
+  markdownContentDigest,
+  refreshFrontmatter,
+  serializeDocument
+} from "./frontmatter/frontmatter.js";
 import { fetchHtml, fetchWithEnvProxy } from "./http/fetch.js";
 import { transformMarkdown } from "./markdown/transform.js";
 import { storagePathForUrl } from "./path/storage-path.js";
@@ -62,7 +69,83 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     ...(maxResponseBytes !== undefined ? { maxResponseBytes } : {}),
     ...(maxRedirects !== undefined ? { maxRedirects } : {})
   };
-  const fetched = await fetchHtml(requestedUrl, http);
+  let conditional: { etag?: string; lastModified?: string } | undefined;
+  if (options.update && requestedExisting) {
+    if (requestedExisting.etag) {
+      conditional = { etag: requestedExisting.etag };
+    } else {
+      const lastModified = rfc3339ToHttpDate(requestedExisting.lastModified);
+      if (lastModified) {
+        conditional = { lastModified };
+      }
+    }
+  }
+  const fetched = await fetchHtml(requestedUrl, {
+    ...http,
+    ...(conditional ? { conditional } : {})
+  });
+  const now = options.now?.() ?? new Date();
+  const normalizeLastModified = (
+    value: string | undefined,
+    fallback?: string
+  ): string | undefined => {
+    if (!value) {
+      return rfc3339ToHttpDate(fallback) ? fallback : undefined;
+    }
+    const normalized = httpDateToRfc3339(value);
+    if (!normalized) {
+      warn({
+        code: "INVALID_LAST_MODIFIED",
+        message: `Invalid Last-Modified response header: ${value}`,
+        url: fetched.finalUrl
+      });
+      return fallback;
+    }
+    return normalized;
+  };
+  if (fetched.notModified) {
+    if (!requestedExisting) {
+      throw new MdhqError(
+        "FETCH_FAILED",
+        `HTTP 304 for ${requestedUrl} without an existing document`
+      );
+    }
+    const lastModified = normalizeLastModified(
+      fetched.lastModified,
+      requestedExisting.lastModified
+    );
+    const etag = fetched.etag ?? requestedExisting.etag;
+    const frontmatter = refreshFrontmatter(requestedExisting.frontmatter, {
+      sourceUrl: requestedExisting.sourceUrl,
+      requestedUrl,
+      created:
+        requestedExisting.created && !Number.isNaN(Date.parse(requestedExisting.created))
+          ? requestedExisting.created
+          : now,
+      modified: now,
+      contentDigest: requestedExisting.contentDigest,
+      ...(etag ? { etag } : {}),
+      ...(lastModified ? { lastModified } : {}),
+      ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
+    });
+    const content = serializeDocument(frontmatter, requestedExisting.markdown);
+    await saveDocument({
+      path: requestedPath,
+      content,
+      sourceUrl: requestedExisting.sourceUrl,
+      update: true,
+      root,
+      ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
+    });
+    return {
+      requestedUrl,
+      sourceUrl: requestedExisting.sourceUrl,
+      path: requestedPath,
+      status: "unchanged",
+      assets: [],
+      warnings
+    };
+  }
   const finalUrl = new URL(fetched.finalUrl);
   const matchedConfig = resolveHostConfig(
     normalizeHost(finalUrl),
@@ -144,17 +227,21 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         assets: [],
         ...(metadata.image ? { representativeImage: metadata.image } : {})
       };
-  const now = options.now?.() ?? new Date();
   const created =
     existing?.created && !Number.isNaN(Date.parse(existing.created))
       ? existing.created
       : now;
+  const contentDigest = markdownContentDigest(localized.markdown);
+  const lastModified = normalizeLastModified(fetched.lastModified);
   const frontmatter = buildFrontmatter({
     metadata,
     sourceUrl: finalUrl.href,
     requestedUrl,
     created,
-    ...(existing && options.update ? { modified: now } : {}),
+    modified: now,
+    contentDigest,
+    ...(fetched.etag ? { etag: fetched.etag } : {}),
+    ...(lastModified ? { lastModified } : {}),
     ...(localized.representativeImage
       ? { image: localized.representativeImage }
       : {}),
@@ -164,7 +251,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
   });
   const content = serializeDocument(frontmatter, localized.markdown);
-  const status = await saveDocument({
+  const storageStatus = await saveDocument({
     path: markdownPath,
     content,
     sourceUrl: finalUrl.href,
@@ -176,7 +263,10 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     requestedUrl,
     sourceUrl: finalUrl.href,
     path: markdownPath,
-    status,
+    status:
+      storageStatus === "updated" && existing?.contentDigest === contentDigest
+        ? "unchanged"
+        : storageStatus,
     assets: localized.assets,
     warnings
   };

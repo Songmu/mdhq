@@ -4,6 +4,7 @@ import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { parseDocument } from "./frontmatter/frontmatter.js";
 import { getPage } from "./get-page.js";
 
 describe("getPage", () => {
@@ -11,9 +12,81 @@ describe("getPage", () => {
   let baseUrl: string;
   let root: string;
   let crossOriginTarget: string | undefined;
+  let changingBody: string;
+  let includeChangingEtag: boolean;
+  let conditionalHeaders: Array<{
+    path: string;
+    etag?: string;
+    lastModified?: string;
+  }>;
 
   beforeEach(async () => {
+    changingBody = "First version";
+    includeChangingEtag = false;
+    conditionalHeaders = [];
     server = createServer((request, response) => {
+      conditionalHeaders.push({
+        path: request.url ?? "",
+        ...(request.headers["if-none-match"]
+          ? { etag: request.headers["if-none-match"] }
+          : {}),
+        ...(request.headers["if-modified-since"]
+          ? { lastModified: request.headers["if-modified-since"] }
+          : {})
+      });
+      if (request.url === "/conditional-etag") {
+        if (request.headers["if-none-match"] === '"v1"') {
+          response.writeHead(304, { etag: '"v1"' }).end();
+          return;
+        }
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            etag: '"v1"'
+          })
+          .end(
+            "<html><head><title>Conditional</title></head><body><article><p>Stable content for ETag.</p><img src=\"/image.png\" alt=\"Example\"></article></body></html>"
+          );
+        return;
+      }
+      if (request.url === "/conditional-last-modified") {
+        const lastModified = "Mon, 31 Aug 2026 03:00:00 GMT";
+        if (request.headers["if-modified-since"] === lastModified) {
+          response.writeHead(304, { "last-modified": lastModified }).end();
+          return;
+        }
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            "last-modified": lastModified
+          })
+          .end(
+            "<html><head><title>Conditional</title></head><body><article><p>Stable content for Last-Modified.</p></article></body></html>"
+          );
+        return;
+      }
+      if (request.url === "/changing") {
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            ...(includeChangingEtag ? { etag: '"temporary"' } : {})
+          })
+          .end(
+            `<html><head><title>Changing</title></head><body><article><p>${changingBody}</p></article></body></html>`
+          );
+        return;
+      }
+      if (request.url === "/invalid-last-modified") {
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            "last-modified": "not-a-date"
+          })
+          .end(
+            "<html><head><title>Invalid validator</title></head><body><article><p>Valid article content.</p></article></body></html>"
+          );
+        return;
+      }
       if (request.url === "/cross-origin" && crossOriginTarget) {
         response.writeHead(302, { location: crossOriginTarget }).end();
         return;
@@ -91,6 +164,15 @@ describe("getPage", () => {
     expect(document).toContain("title: Integration Example");
     expect(document).toContain(`${baseUrl}/next`);
     expect(document).toContain("_assets/");
+    const parsed = parseDocument(document);
+    expect(parsed?.frontmatter).toMatchObject({
+      created: expect.any(String),
+      modified: expect.any(String),
+      content_digest: expect.stringMatching(/^sha256:/u)
+    });
+    expect(parsed?.frontmatter).not.toHaveProperty("type");
+    expect(parsed?.frontmatter.created).toBe(parsed?.frontmatter.modified);
+    expect(document.endsWith("\n")).toBe(true);
 
     const skipped = await getPage({
       url: `${baseUrl}/article`,
@@ -198,5 +280,104 @@ describe("getPage", () => {
     expect(result.assets[0]?.status).toBe("failed");
     expect(document).toContain(`image: ${baseUrl}/missing.png`);
     expect(document).not.toContain("image_source:");
+  });
+
+  it("uses ETag for an unchanged update", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      useAsync: false,
+      now: () => new Date("2026-08-31T12:00:00+09:00")
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    const imageRequestsBefore = conditionalHeaders.filter(
+      (request) => request.path === "/image.png"
+    ).length;
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      update: true,
+      useAsync: false,
+      now: () => new Date("2026-09-01T14:00:00+09:00")
+    });
+    const after = parseDocument(await readFile(updated.path, "utf8"));
+    expect(updated.status).toBe("unchanged");
+    expect(conditionalHeaders.at(-1)).toMatchObject({ etag: '"v1"' });
+    expect(after?.frontmatter.etag).toBe('"v1"');
+    expect(after?.frontmatter.content_digest).toBe(before?.frontmatter.content_digest);
+    expect(after?.frontmatter.modified).not.toBe(before?.frontmatter.modified);
+    expect(after?.markdown).toBe(before?.markdown);
+    expect(
+      conditionalHeaders.filter((request) => request.path === "/image.png").length
+    ).toBe(imageRequestsBefore);
+  });
+
+  it("falls back to Last-Modified when ETag is absent", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-last-modified`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-last-modified`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    const document = parseDocument(await readFile(first.path, "utf8"));
+    expect(updated.status).toBe("unchanged");
+    expect(conditionalHeaders.at(-1)).toMatchObject({
+      lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
+    });
+    expect(document?.frontmatter.last_modified).toBe("2026-08-31T03:00:00Z");
+  });
+
+  it("distinguishes equal and changed Markdown bodies on 200 responses", async () => {
+    includeChangingEtag = true;
+    const first = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    includeChangingEtag = false;
+    const unchanged = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    changingBody = "Second version";
+    const changed = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(first.status).toBe("saved");
+    expect(unchanged.status).toBe("unchanged");
+    expect(changed.status).toBe("updated");
+    expect(
+      parseDocument(await readFile(changed.path, "utf8"))?.frontmatter
+    ).not.toHaveProperty("etag");
+  });
+
+  it("warns and omits an invalid Last-Modified value", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/invalid-last-modified`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: "INVALID_LAST_MODIFIED" })
+    );
+    expect(
+      parseDocument(await readFile(result.path, "utf8"))?.frontmatter
+    ).not.toHaveProperty("last_modified");
   });
 });

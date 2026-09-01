@@ -41,7 +41,10 @@ describe("fetchHtml", () => {
       headers: [{ name: "X-Test", value: "present" }]
     });
     expect(result.finalUrl).toBe(`${baseUrl}/page`);
-    expect(result.html).toContain("present");
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("present");
+    }
   });
 
   it("does not forward custom headers across origins", async () => {
@@ -162,6 +165,69 @@ describe("fetchHtml", () => {
       });
     } finally {
       await new Promise<void>((resolve) => redirect.close(() => resolve()));
+    }
+  });
+
+  it("uses ETag before Last-Modified and accepts 304 without a body", async () => {
+    let receivedHeaders: Record<string, string | undefined> = {};
+    const conditionalServer = createServer((request, response) => {
+      receivedHeaders = {
+        ifNoneMatch: request.headers["if-none-match"],
+        ifModifiedSince: request.headers["if-modified-since"]
+      };
+      response.writeHead(304, { etag: '"new"' }).end();
+    });
+    await new Promise<void>((resolve) =>
+      conditionalServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = conditionalServer.address() as AddressInfo;
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${address.port}/`, {
+        conditional: {
+          etag: '"old"',
+          lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
+        }
+      });
+      expect(result.notModified).toBe(true);
+      expect(result.etag).toBe('"new"');
+      expect(receivedHeaders).toEqual({
+        ifNoneMatch: '"old"',
+        ifModifiedSince: undefined
+      });
+    } finally {
+      await new Promise<void>((resolve) => conditionalServer.close(() => resolve()));
+    }
+  });
+
+  it("falls back to If-Modified-Since and drops validators after redirects", async () => {
+    const received: Array<{ path: string; value?: string }> = [];
+    const redirectServer = createServer((request, response) => {
+      received.push({
+        path: request.url ?? "",
+        ...(request.headers["if-modified-since"]
+          ? { value: request.headers["if-modified-since"] }
+          : {})
+      });
+      if (request.url === "/start") {
+        response.writeHead(302, { location: "/final" }).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/html" }).end("<html></html>");
+    });
+    await new Promise<void>((resolve) =>
+      redirectServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = redirectServer.address() as AddressInfo;
+    try {
+      await fetchHtml(`http://127.0.0.1:${address.port}/start`, {
+        conditional: { lastModified: "Mon, 31 Aug 2026 03:00:00 GMT" }
+      });
+      expect(received).toEqual([
+        { path: "/start", value: "Mon, 31 Aug 2026 03:00:00 GMT" },
+        { path: "/final" }
+      ]);
+    } finally {
+      await new Promise<void>((resolve) => redirectServer.close(() => resolve()));
     }
   });
 });

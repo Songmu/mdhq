@@ -91,8 +91,9 @@ produces no output. A missing or unreadable root is an error.
 8. Convert the fetched HTML to Markdown with Defuddle.
 9. Normalize ordinary links and discover image links.
 10. Download supported images and rewrite successful image destinations.
-11. Build YAML frontmatter.
-12. Save the Markdown with collision-safe create or update behavior.
+11. Normalize the Markdown body and calculate its SHA-256 content digest.
+12. Build YAML frontmatter.
+13. Save the Markdown with collision-safe create or update behavior.
 
 The final URL determines the destination and the `source` frontmatter field.
 The original URL is retained as `requested_url` only when it differs from the
@@ -112,6 +113,22 @@ Defaults:
 | Timeout | 30 seconds per request attempt |
 | Maximum response size | 20 MiB per resource |
 | Maximum redirects | 10 |
+
+With `update`, mdhq uses validators from a recognized existing destination:
+
+1. Send `If-None-Match` when frontmatter contains `etag`.
+2. Otherwise send `If-Modified-Since` when frontmatter contains a valid
+   `last_modified`.
+3. Otherwise perform an ordinary GET.
+
+Automatic validators are sent only on the first request and are not forwarded
+after redirects. Caller-provided `If-None-Match` or `If-Modified-Since`
+suppresses automatic validator headers.
+
+An HTTP 304 response preserves the existing Markdown body, skips conversion
+and asset downloads, updates `modified`, and returns `unchanged`. A 200
+response replaces stored validators with the response values; validators that
+are absent from a 200 response are removed.
 
 Page responses must have one of these media types:
 
@@ -451,6 +468,7 @@ Metadata fields are emitted when non-empty:
 - `description`
 - `author`
 - `published`
+- `updated`
 - `site`
 - `domain`
 - `language`
@@ -462,18 +480,33 @@ mdhq-controlled fields:
 
 - `source`: final page URL
 - `requested_url`: original URL, only when different from `source`
-- `type`: always `clip`
 - `created`: initial local acquisition time
-- `modified`: update time, only when replacing an existing document
+- `modified`: latest successful acquisition or HTTP revalidation time
+- `content_digest`: SHA-256 digest of the normalized Markdown body
+- `etag`: HTTP ETag stored verbatim, when supplied
+- `last_modified`: HTTP Last-Modified converted to RFC 3339 UTC, when valid
 
-`created` and `modified` use local-offset RFC 3339 timestamps with
-second-level precision. A valid existing `created` string is preserved
-verbatim during an update, including its original UTC offset.
+`created` and `modified` are both written on initial acquisition and use
+local-offset RFC 3339 timestamps with second-level precision. A valid existing
+`created` string is preserved verbatim during an update, including its
+original UTC offset.
+
+`published` and `updated` are source-article metadata. Instants are normalized
+to RFC 3339 with second precision; genuinely date-only values remain
+`YYYY-MM-DD`. `updated` is extracted from Schema.org `dateModified`, article
+or Open Graph modification metadata, or `itemprop="dateModified"`.
+
+The Markdown body uses LF line endings, has trailing whitespace removed, and
+ends with exactly one LF. `content_digest` is calculated from the UTF-8 bytes
+of that normalized body only. Frontmatter, delimiters, and the blank line
+between frontmatter and body are excluded.
 
 Configured exclusions and values are applied before mdhq-controlled fields.
-Consequently `source`, `requested_url`, `type`, `created`, and `modified`
-cannot be removed or overridden by frontmatter configuration. Other fields,
-including extracted metadata and `image`, can be excluded or replaced.
+Consequently `source`, `requested_url`, `created`, `modified`,
+`content_digest`, `etag`, and `last_modified` cannot be removed or overridden
+by frontmatter configuration. Other fields, including extracted metadata,
+`image`, and `type`, can be excluded or replaced. mdhq does not emit `type` by
+default; it can be added with `frontmatter.values`.
 
 ## Existing files and concurrent writes
 
@@ -499,6 +532,9 @@ With `update`:
   `PATH_COLLISION`
 - an existing same-identity document is written to a temporary file in the
   same directory and replaced with an atomic rename
+- an HTTP 304 or a 200 response with an unchanged normalized Markdown body
+  returns `unchanged`
+- a 200 response with a changed normalized Markdown body returns `updated`
 - the identity is checked again immediately before replacement
 - temporary files are removed after success or failure
 
@@ -524,6 +560,7 @@ Current warning codes:
 - `UNKNOWN_CONFIG_KEY`
 - `ASSET_FETCH_FAILED`
 - `INVALID_IMAGE_URL`
+- `INVALID_LAST_MODIFIED`
 
 Fatal library errors are instances of `MdhqError`. See
 [Library API reference](library-api.md#error-model) for the current codes.

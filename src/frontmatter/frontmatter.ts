@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { parse, stringify } from "yaml";
 import type { MdhqConfig } from "../config/config.js";
+import { formatLocalRfc3339 } from "../date.js";
 import type { PageMetadata } from "../types.js";
 
 export interface FrontmatterOptions {
@@ -7,22 +9,59 @@ export interface FrontmatterOptions {
   sourceUrl: string;
   requestedUrl: string;
   created: Date | string;
-  modified?: Date;
+  modified: Date;
+  contentDigest: string;
+  etag?: string;
+  lastModified?: string;
   image?: string;
   imageSource?: string;
   config?: MdhqConfig["frontmatter"];
 }
 
-function formatLocalRfc3339(date: Date | string): string {
-  if (typeof date === "string") {
-    return date;
+interface ControlledFrontmatterOptions {
+  fields: Record<string, unknown>;
+  sourceUrl: string;
+  requestedUrl: string;
+  created: Date | string;
+  modified: Date;
+  contentDigest: string;
+  etag?: string;
+  lastModified?: string;
+  config?: MdhqConfig["frontmatter"];
+}
+
+function applyControlledFields(options: ControlledFrontmatterOptions): Record<string, unknown> {
+  const fields = { ...options.fields };
+  delete fields.type;
+  for (const key of options.config?.exclude ?? []) {
+    delete fields[key];
   }
-  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
-  const offsetMinutes = -date.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const hours = Math.floor(Math.abs(offsetMinutes) / 60);
-  const minutes = Math.abs(offsetMinutes) % 60;
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${sign}${pad(hours)}:${pad(minutes)}`;
+  for (const [key, value] of Object.entries(options.config?.values ?? {})) {
+    fields[key] = value;
+  }
+  fields.source = options.sourceUrl;
+  if (options.requestedUrl !== options.sourceUrl) {
+    fields.requested_url = options.requestedUrl;
+  } else {
+    delete fields.requested_url;
+  }
+  fields.created =
+    typeof options.created === "string"
+      ? options.created
+      : formatLocalRfc3339(options.created);
+  fields.modified = formatLocalRfc3339(options.modified);
+  fields.content_digest = options.contentDigest;
+  if (options.etag) {
+    fields.etag = options.etag;
+  } else {
+    delete fields.etag;
+  }
+  if (options.lastModified) {
+    fields.last_modified = options.lastModified;
+  } else {
+    delete fields.last_modified;
+  }
+  return fields;
 }
 
 export function buildFrontmatter(options: FrontmatterOptions): Record<string, unknown> {
@@ -32,6 +71,7 @@ export function buildFrontmatter(options: FrontmatterOptions): Record<string, un
     ["description", options.metadata.description],
     ["author", options.metadata.author],
     ["published", options.metadata.published],
+    ["updated", options.metadata.updated],
     ["site", options.metadata.site],
     ["domain", options.metadata.domain],
     ["language", options.metadata.language],
@@ -50,42 +90,60 @@ export function buildFrontmatter(options: FrontmatterOptions): Record<string, un
   if (options.imageSource) {
     fields.image_source = options.imageSource;
   }
-  for (const key of options.config?.exclude ?? []) {
-    delete fields[key];
-  }
-  for (const [key, value] of Object.entries(options.config?.values ?? {})) {
-    fields[key] = value;
-  }
-  fields.source = options.sourceUrl;
-  if (options.requestedUrl !== options.sourceUrl) {
-    fields.requested_url = options.requestedUrl;
-  }
-  fields.type = "clip";
-  fields.created = formatLocalRfc3339(options.created);
-  if (options.modified) {
-    fields.modified = formatLocalRfc3339(options.modified);
-  }
-  return fields;
+  return applyControlledFields({ ...options, fields });
+}
+
+export function refreshFrontmatter(
+  existing: Record<string, unknown>,
+  options: Omit<ControlledFrontmatterOptions, "fields">
+): Record<string, unknown> {
+  return applyControlledFields({ ...options, fields: existing });
+}
+
+export function normalizeMarkdownBody(markdown: string): string {
+  const normalized = markdown.replace(/\r\n?/gu, "\n").trimEnd();
+  return normalized ? `${normalized}\n` : "";
+}
+
+export function markdownContentDigest(markdown: string): string {
+  return `sha256:${createHash("sha256").update(normalizeMarkdownBody(markdown), "utf8").digest("hex")}`;
 }
 
 export function serializeDocument(frontmatter: Record<string, unknown>, markdown: string): string {
-  return `---\n${stringify(frontmatter, { lineWidth: 0 }).trimEnd()}\n---\n\n${markdown.trimEnd()}\n`;
+  return `---\n${stringify(frontmatter, { lineWidth: 0 }).trimEnd()}\n---\n\n${normalizeMarkdownBody(markdown)}`;
 }
 
-export function parseDocumentFrontmatter(document: string): Record<string, unknown> | undefined {
-  if (!document.startsWith("---\n")) {
+export interface ParsedDocument {
+  frontmatter: Record<string, unknown>;
+  markdown: string;
+}
+
+export function parseDocument(document: string): ParsedDocument | undefined {
+  const normalized = document.replace(/\r\n?/gu, "\n");
+  if (!normalized.startsWith("---\n")) {
     return undefined;
   }
-  const end = document.indexOf("\n---\n", 4);
+  const end = normalized.indexOf("\n---\n", 4);
   if (end < 0) {
     return undefined;
   }
   try {
-    const value = parse(document.slice(4, end));
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : undefined;
+    const value = parse(normalized.slice(4, end));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+    const afterFrontmatter = normalized.slice(end + 5);
+    return {
+      frontmatter: value as Record<string, unknown>,
+      markdown: normalizeMarkdownBody(
+        afterFrontmatter.startsWith("\n") ? afterFrontmatter.slice(1) : afterFrontmatter
+      )
+    };
   } catch {
     return undefined;
   }
+}
+
+export function parseDocumentFrontmatter(document: string): Record<string, unknown> | undefined {
+  return parseDocument(document)?.frontmatter;
 }

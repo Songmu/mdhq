@@ -78,6 +78,7 @@ interface PageMetadata {
   description?: string;
   author?: string;
   published?: string;
+  updated?: string;
   site?: string;
   domain?: string;
   language?: string;
@@ -131,7 +132,7 @@ interface GetPageOptions {
 | `maxResponseBytes` | Override the configured or built-in response-size limit. |
 | `maxRedirects` | Override the configured or built-in redirect limit. |
 | `useAsync` | Highest-precedence Defuddle asynchronous-extractor setting. |
-| `now` | Clock injection used for `created` and `modified`; intended for deterministic callers and tests. |
+| `now` | Clock injection used for `created` and `modified`; intended for deterministic callers and tests. Both fields are written on initial acquisition. |
 | `onWarning` | Called once for each warning as it is produced. |
 
 ### Headers
@@ -152,7 +153,7 @@ interface GetPageResult {
   requestedUrl: string;
   sourceUrl: string;
   path: string;
-  status: "saved" | "updated" | "skipped";
+  status: "saved" | "updated" | "unchanged" | "skipped";
   assets: AssetResult[];
   warnings: MdhqWarning[];
 }
@@ -169,6 +170,19 @@ interface GetPageResult {
 - `path` is the absolute Markdown path.
 - `assets` is empty when page processing is skipped.
 - `warnings` contains configuration and asset warnings.
+
+Status meanings:
+
+- `saved`: a new document was created.
+- `updated`: an existing document's normalized Markdown body changed.
+- `unchanged`: HTTP returned 304, or a 200 response produced the same
+  normalized Markdown body digest. Acquisition metadata may still be updated.
+- `skipped`: an existing same-identity document was found without `update`.
+
+With `update`, `getPage` sends the stored `etag` as `If-None-Match`, or falls
+back to the stored `last_modified` as `If-Modified-Since`. These validators,
+along with `created`, `modified`, and `content_digest`, are stored in the
+Markdown frontmatter.
 
 ### Asset results
 
@@ -216,6 +230,7 @@ Current warning codes:
 | `UNKNOWN_CONFIG_KEY` | A JSON configuration key is not recognized but processing continues. |
 | `ASSET_FETCH_FAILED` | An individual asset could not be fetched, validated, or saved. |
 | `INVALID_IMAGE_URL` | Defuddle returned an invalid or non-HTTP(S) representative-image URL; the page is saved without that metadata field. |
+| `INVALID_LAST_MODIFIED` | A response contained an invalid `Last-Modified` value; the page is saved without that validator. |
 
 Warnings are both accumulated in the result and delivered to `onWarning`.
 

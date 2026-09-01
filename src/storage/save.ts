@@ -1,7 +1,7 @@
 import path from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
 import { MdhqError } from "../errors.js";
-import { parseDocumentFrontmatter } from "../frontmatter/frontmatter.js";
+import { markdownContentDigest, parseDocument } from "../frontmatter/frontmatter.js";
 import { sameUrlIdentity } from "../url/identity.js";
 import { publishFileExclusive, replaceFileAtomic } from "./atomic.js";
 import { assertSafeDestination } from "./path-safety.js";
@@ -17,7 +17,12 @@ export interface SaveDocumentOptions {
 
 export interface ExistingDocument {
   sourceUrl: string;
+  frontmatter: Record<string, unknown>;
+  markdown: string;
+  contentDigest: string;
   created?: string;
+  etag?: string;
+  lastModified?: string;
 }
 
 export async function readExistingDocument(filePath: string): Promise<ExistingDocument | undefined> {
@@ -30,16 +35,25 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
     }
     throw new MdhqError("STORAGE_ERROR", `Failed to read ${filePath}`, { cause: error });
   }
-  const frontmatter = parseDocumentFrontmatter(content);
-  if (typeof frontmatter?.source !== "string") {
+  const parsed = parseDocument(content);
+  if (!parsed || typeof parsed.frontmatter.source !== "string") {
     throw new MdhqError(
       "PATH_COLLISION",
       `Existing file does not contain a valid source URL: ${filePath}`
     );
   }
+  const frontmatter = parsed.frontmatter;
+  const sourceUrl = frontmatter.source as string;
   return {
-    sourceUrl: frontmatter.source,
-    ...(typeof frontmatter.created === "string" ? { created: frontmatter.created } : {})
+    sourceUrl,
+    frontmatter,
+    markdown: parsed.markdown,
+    contentDigest: markdownContentDigest(parsed.markdown),
+    ...(typeof frontmatter.created === "string" ? { created: frontmatter.created } : {}),
+    ...(typeof frontmatter.etag === "string" ? { etag: frontmatter.etag } : {}),
+    ...(typeof frontmatter.last_modified === "string"
+      ? { lastModified: frontmatter.last_modified }
+      : {})
   };
 }
 

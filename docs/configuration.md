@@ -176,8 +176,24 @@ Protected fields are:
 
 - `source`
 - `requested_url`
-- `type`
 - `created`
+- `modified`
+- `content_digest`
+- `etag`
+- `last_modified`
+
+mdhq does not add a `type` property by default. Add one explicitly when
+desired:
+
+```json
+{
+  "frontmatter": {
+    "values": {
+      "type": "clip"
+    }
+  }
+}
+```
 - `modified`
 
 Protected fields cannot be removed or overridden by configuration.
