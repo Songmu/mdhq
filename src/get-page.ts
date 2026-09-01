@@ -19,7 +19,11 @@ import { transformMarkdown } from "./markdown/transform.js";
 import { storagePathForUrl } from "./path/storage-path.js";
 import { inspectDestination, saveDocument } from "./storage/save.js";
 import type { GetPageOptions, GetPageResult, MdhqWarning } from "./types.js";
-import { normalizeHost, parseHttpUrl } from "./url/identity.js";
+import {
+  normalizeHost,
+  parseHttpUrl,
+  sameHttpTarget
+} from "./url/identity.js";
 
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   const requestedUrl = parseHttpUrl(options.url).href;
@@ -74,7 +78,11 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     ...(maxRedirects !== undefined ? { maxRedirects } : {})
   };
   let conditional: { etag?: string; lastModified?: string } | undefined;
-  if (options.update && requestedExisting) {
+  if (
+    options.update &&
+    requestedExisting &&
+    sameHttpTarget(requestedExisting.sourceUrl, requestedUrl)
+  ) {
     if (requestedExisting.etag) {
       conditional = { etag: requestedExisting.etag };
     } else {

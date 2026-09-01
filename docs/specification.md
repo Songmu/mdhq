@@ -118,10 +118,16 @@ Defaults:
 
 With `update`, mdhq uses validators from a recognized existing destination:
 
-1. Send `If-None-Match` when frontmatter contains `etag`.
-2. Otherwise send `If-Modified-Since` when frontmatter contains a valid
+1. Confirm that the stored `source` is the same HTTP target as the requested
+   URL, comparing scheme, authority, path, and query while ignoring fragments.
+2. Send `If-None-Match` when frontmatter contains `etag`.
+3. Otherwise send `If-Modified-Since` when frontmatter contains a valid
    `last_modified`.
-3. Otherwise perform an ordinary GET.
+4. Otherwise perform an ordinary GET.
+
+Storage identity is intentionally broader than HTTP validator scope. A
+same-identity URL with a different scheme, query, or path alias is fetched
+without stored validators.
 
 Automatic validators are sent only on the first request and are not forwarded
 after redirects. When a stored validator is available, it replaces any

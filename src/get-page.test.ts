@@ -102,6 +102,25 @@ describe("getPage", () => {
           );
         return;
       }
+      if (request.url?.startsWith("/identity-query")) {
+        if (request.headers["if-none-match"]) {
+          response.writeHead(304).end();
+          return;
+        }
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            etag: '"query"'
+          })
+          .end(
+            `<html><head><title>Query target</title></head><body><article><p>${
+              request.url.includes("b=2")
+                ? "Second query target has replacement article content."
+                : "First query target has original article content."
+            }</p></article></body></html>`
+          );
+        return;
+      }
       if (request.url === "/invalid-last-modified") {
         response
           .writeHead(200, {
@@ -477,5 +496,30 @@ describe("getPage", () => {
       })
     ).rejects.toMatchObject({ code: "FETCH_FAILED" });
     expect(await readFile(first.path, "utf8")).toBe(before);
+  });
+
+  it("does not reuse validators for a different query target with the same storage identity", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/identity-query?a=1`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const updated = await getPage({
+      url: `${baseUrl}/identity-query?b=2`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.status).toBe("updated");
+    expect(conditionalHeaders).toContainEqual({ path: "/identity-query?b=2" });
+    const document = parseDocument(await readFile(first.path, "utf8"));
+    expect(document?.markdown).toContain(
+      "Second query target has replacement article content."
+    );
+    expect(document?.frontmatter.source).toBe(
+      `${baseUrl}/identity-query?b=2`
+    );
   });
 });
