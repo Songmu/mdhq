@@ -18,6 +18,15 @@ function types(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function schemaTypeName(value: string): string {
+  for (const prefix of ["https://schema.org/", "http://schema.org/"]) {
+    if (value.startsWith(prefix)) {
+      return value.slice(prefix.length);
+    }
+  }
+  return value;
+}
+
 function collectJsonLdDates(value: unknown, dates: string[]): void {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -30,7 +39,7 @@ function collectJsonLdDates(value: unknown, dates: string[]): void {
   }
   const object = value as Record<string, unknown>;
   if (
-    types(object["@type"]).some((type) => ARTICLE_TYPES.has(type)) &&
+    types(object["@type"]).some((type) => ARTICLE_TYPES.has(schemaTypeName(type))) &&
     typeof object.dateModified === "string"
   ) {
     dates.push(object.dateModified);
@@ -72,7 +81,7 @@ export function extractUpdatedDate(html: string): string | undefined {
     ...candidates,
     attributeValue(document.querySelector('meta[property="article:modified_time"]'), ["content"]),
     attributeValue(document.querySelector('meta[property="og:updated_time"]'), ["content"]),
-    attributeValue(document.querySelector('[itemprop="dateModified"]'), ["datetime", "content"])
+    attributeValue(document.querySelector('[itemprop~="dateModified"]'), ["datetime", "content"])
   ]) {
     if (candidate && normalizeSourceDate(candidate)) {
       return candidate;

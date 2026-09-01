@@ -49,7 +49,7 @@ export const fetchWithEnvProxy: typeof globalThis.fetch = (input, init) =>
 function requestHeaders(
   options: FetchResourceOptions,
   includeCustomHeaders: boolean,
-  includeConditionalHeaders: boolean
+  includeStoredConditional: boolean
 ): Headers {
   const headers = new Headers({
     accept: options.acceptedContentTypes?.join(", ") ?? "*/*",
@@ -60,12 +60,14 @@ function requestHeaders(
       headers.append(header.name, header.value);
     }
   }
-  if (includeConditionalHeaders && options.conditional) {
+  if (options.conditional) {
     headers.delete("if-none-match");
     headers.delete("if-modified-since");
-    if (options.conditional?.etag) {
+  }
+  if (includeStoredConditional && options.conditional) {
+    if (options.conditional.etag) {
       headers.set("if-none-match", options.conditional.etag);
-    } else if (options.conditional?.lastModified) {
+    } else if (options.conditional.lastModified) {
       headers.set("if-modified-since", options.conditional.lastModified);
     }
   }

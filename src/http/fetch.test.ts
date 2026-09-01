@@ -204,12 +204,19 @@ describe("fetchHtml", () => {
   });
 
   it("falls back to If-Modified-Since and drops validators after redirects", async () => {
-    const received: Array<{ path: string; value?: string }> = [];
+    const received: Array<{
+      path: string;
+      etag?: string;
+      lastModified?: string;
+    }> = [];
     const redirectServer = createServer((request, response) => {
       received.push({
         path: request.url ?? "",
+        ...(request.headers["if-none-match"]
+          ? { etag: request.headers["if-none-match"] }
+          : {}),
         ...(request.headers["if-modified-since"]
-          ? { value: request.headers["if-modified-since"] }
+          ? { lastModified: request.headers["if-modified-since"] }
           : {})
       });
       if (request.url === "/start") {
@@ -224,10 +231,14 @@ describe("fetchHtml", () => {
     const address = redirectServer.address() as AddressInfo;
     try {
       await fetchHtml(`http://127.0.0.1:${address.port}/start`, {
+        headers: [{ name: "If-None-Match", value: '"caller"' }],
         conditional: { lastModified: "Mon, 31 Aug 2026 03:00:00 GMT" }
       });
       expect(received).toEqual([
-        { path: "/start", value: "Mon, 31 Aug 2026 03:00:00 GMT" },
+        {
+          path: "/start",
+          lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
+        },
         { path: "/final" }
       ]);
     } finally {

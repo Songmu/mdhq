@@ -34,4 +34,22 @@ describe("extractUpdatedDate", () => {
       </head></html>`)
     ).toBe("2026-08-30");
   });
+
+  it("accepts absolute Schema.org type IRIs", () => {
+    expect(
+      extractUpdatedDate(`<html><head>
+        <script type="application/ld+json">
+          {"@type":"https://schema.org/NewsArticle","dateModified":"2026-08-31"}
+        </script>
+      </head></html>`)
+    ).toBe("2026-08-31");
+  });
+
+  it("matches dateModified in a multi-token itemprop", () => {
+    expect(
+      extractUpdatedDate(
+        '<time itemprop="datePublished dateModified" datetime="2026-08-31"></time>'
+      )
+    ).toBe("2026-08-31");
+  });
 });
