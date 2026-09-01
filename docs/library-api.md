@@ -6,33 +6,34 @@ The package is an ECMAScript module:
 import {
   convertHtml,
   getPage,
-  MarkhqError
-} from "markhq";
+  MdhqError
+} from "mdhq";
 ```
 
 Runtime exports:
 
 - `convertHtml`
 - `getPage`
-- `MarkhqError`
+- `MdhqError`
 
 Type-only exports:
 
-- `MarkhqErrorCode`
+- `MdhqConfig`
+- `MdhqErrorCode`
 - `AssetResult`
 - `ConvertedPage`
 - `ConvertHtmlOptions`
 - `GetPageOptions`
 - `GetPageResult`
 - `HeaderValue`
-- `MarkhqWarning`
+- `MdhqWarning`
 - `PageMetadata`
 
 TypeScript callers should import types with `import type`:
 
 ```ts
-import { getPage, MarkhqError } from "markhq";
-import type { GetPageOptions, GetPageResult } from "markhq";
+import { getPage, MdhqError } from "mdhq";
+import type { GetPageOptions, GetPageResult, MdhqConfig } from "mdhq";
 ```
 
 ## `convertHtml`
@@ -59,7 +60,7 @@ interface ConvertHtmlOptions {
   HTTP or HTTPS; for example, a `file:` URL is accepted.
 - `defuddle` passes options to Defuddle.
 
-markhq forces `markdown: true`. `useAsync` defaults to `true` when it is not
+mdhq forces `markdown: true`. `useAsync` defaults to `true` when it is not
 provided.
 
 ### Result
@@ -113,7 +114,7 @@ interface GetPageOptions {
   maxRedirects?: number;
   useAsync?: boolean;
   now?: () => Date;
-  onWarning?: (warning: MarkhqWarning) => void;
+  onWarning?: (warning: MdhqWarning) => void;
 }
 ```
 
@@ -153,7 +154,7 @@ interface GetPageResult {
   path: string;
   status: "saved" | "updated" | "skipped";
   assets: AssetResult[];
-  warnings: MarkhqWarning[];
+  warnings: MdhqWarning[];
 }
 ```
 
@@ -201,7 +202,7 @@ results but reuse the same deterministic file.
 ### Warnings
 
 ```ts
-interface MarkhqWarning {
+interface MdhqWarning {
   code: string;
   message: string;
   url?: string;
@@ -223,8 +224,8 @@ Warnings are both accumulated in the result and delivered to `onWarning`.
 Fatal operational errors are represented by:
 
 ```ts
-class MarkhqError extends Error {
-  readonly code: MarkhqErrorCode;
+class MdhqError extends Error {
+  readonly code: MdhqErrorCode;
   readonly cause?: unknown;
 }
 ```

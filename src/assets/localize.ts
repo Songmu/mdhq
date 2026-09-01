@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fetchResource, type FetchResourceOptions } from "../http/fetch.js";
 import { rewriteImageUrls } from "../markdown/transform.js";
 import { publishFileExclusive, replaceFileAtomic } from "../storage/atomic.js";
-import type { AssetResult, MarkhqWarning } from "../types.js";
+import type { AssetResult, MdhqWarning } from "../types.js";
 
 const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
   "image/avif": ".avif",
@@ -51,7 +51,7 @@ export interface LocalizeAssetsOptions {
   root: string;
   baseUrl: string;
   http?: FetchResourceOptions;
-  warn: (warning: MarkhqWarning) => void;
+  warn: (warning: MdhqWarning) => void;
 }
 
 export interface LocalizeAssetsResult {
@@ -65,7 +65,7 @@ interface ProcessedAsset {
   asset: AssetResult;
   replacement?: string;
   representative: boolean;
-  warning?: MarkhqWarning;
+  warning?: MdhqWarning;
 }
 
 async function processAsset(

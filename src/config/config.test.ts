@@ -7,18 +7,18 @@ import { defaultConfigPath, loadConfig, resolveRoot } from "./config.js";
 describe("configuration", () => {
   it("uses XDG paths and the documented root precedence", () => {
     expect(defaultConfigPath({ XDG_CONFIG_HOME: "/config" })).toBe(
-      path.join("/config", "markhq", "config.json")
+      path.join("/config", "mdhq", "config.json")
     );
-    expect(resolveRoot("/cli", { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe(
+    expect(resolveRoot("/cli", { root: "/config-root" }, { MDHQ_ROOT: "/env" })).toBe(
       path.resolve("/cli")
     );
-    expect(resolveRoot(undefined, { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe(
+    expect(resolveRoot(undefined, { root: "/config-root" }, { MDHQ_ROOT: "/env" })).toBe(
       path.resolve("/env")
     );
   });
 
   it("warns for unknown keys while accepting the configuration", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-config-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-config-"));
     const file = path.join(directory, "config.json");
     await writeFile(
       file,
@@ -36,7 +36,7 @@ describe("configuration", () => {
   });
 
   it("rejects known keys with invalid types", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-config-"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-config-"));
     const file = path.join(directory, "config.json");
     await writeFile(file, JSON.stringify({ timeoutMs: "slow" }));
     await expect(loadConfig(file)).rejects.toMatchObject({ code: "CONFIG_ERROR" });

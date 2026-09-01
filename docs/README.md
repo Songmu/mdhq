@@ -1,6 +1,6 @@
-# markhq documentation
+# mdhq documentation
 
-This directory documents the behavior implemented in markhq `0.0.0`.
+This directory documents the behavior implemented in mdhq `0.0.0`.
 
 - [Current specification](specification.md) describes CLI behavior, URL
   identity, HTTP fetching, storage paths, Markdown processing, assets,

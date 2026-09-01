@@ -1,14 +1,14 @@
 # Current specification
 
-This document describes the behavior implemented in markhq `0.0.0`.
+This document describes the behavior implemented in mdhq `0.0.0`.
 
 ## Overview
 
-markhq fetches one web page, extracts its primary content with Defuddle,
+mdhq fetches one web page, extracts its primary content with Defuddle,
 converts it to Markdown, downloads supported images, adds YAML frontmatter,
 and saves the result in a ghq-inspired directory layout.
 
-The storage tree is self-contained. markhq does not create a database, global
+The storage tree is self-contained. mdhq does not create a database, global
 index, persistent lock file, or state file.
 
 Runtime requirements:
@@ -21,7 +21,7 @@ Runtime requirements:
 The executable provides one subcommand:
 
 ```text
-markhq get [options] <url>
+mdhq get [options] <url>
 ```
 
 Exactly one URL is accepted per invocation. Parallel or multi-URL processing
@@ -46,7 +46,7 @@ With `--json`, stdout contains an object with this shape:
 {
   "requestedUrl": "https://example.com/start",
   "sourceUrl": "https://example.com/article",
-  "path": "/data/markhq/example.com/article.md",
+  "path": "/data/mdhq/example.com/article.md",
   "status": "saved",
   "assets": [],
   "warnings": []
@@ -92,7 +92,7 @@ Defaults:
 
 | Setting | Default |
 | --- | --- |
-| User-Agent | `markhq/0.0.0 (+https://github.com/Songmu/markhq)` |
+| User-Agent | `mdhq/0.0.0 (+https://github.com/Songmu/mdhq)` |
 | Accept for pages | `text/html, application/xhtml+xml` |
 | Timeout | 30 seconds per request attempt |
 | Maximum response size | 20 MiB per resource |
@@ -125,7 +125,7 @@ In this section, "caller-supplied headers" means entries from CLI `--header`
 or library `GetPageOptions.headers`. The separately selected User-Agent is
 sent on every redirect and asset request, including cross-origin requests.
 
-markhq creates its built-in `Accept` and User-Agent headers first, then appends
+mdhq creates its built-in `Accept` and User-Agent headers first, then appends
 entries from `--header` or `GetPageOptions.headers`. Supplying `Accept` or
 `User-Agent` through the generic header option therefore combines another
 value with the built-in or separately configured value rather than replacing
@@ -148,7 +148,7 @@ extractors.
 
 ## Defuddle conversion
 
-markhq uses `defuddle/node` version `0.19.3`.
+mdhq uses `defuddle/node` version `0.19.3`.
 
 The high-level pipeline forces Markdown output. Defuddle asynchronous
 extractors are enabled by default and may contact third-party APIs when local
@@ -161,9 +161,9 @@ The effective `useAsync` value is selected in this order:
 3. Legacy top-level `config.useAsync`
 4. `true`
 
-Defuddle's asynchronous extractor requests receive markhq's environment-aware
+Defuddle's asynchronous extractor requests receive mdhq's environment-aware
 proxy dispatcher. They do not automatically receive CLI `--header` values,
-`GetPageOptions.headers`, or the selected markhq User-Agent. markhq's page and
+`GetPageOptions.headers`, or the selected mdhq User-Agent. mdhq's page and
 asset timeout, redirect, and response-size limits are also not wrapped around
 those Defuddle-internal requests. Defuddle controls their request headers and
 failure behavior.
@@ -302,7 +302,7 @@ Special hostnames such as `.` and `..` use the same safe-segment encoding and
 cannot escape the selected storage root. The final resolved destination is
 also checked to ensure it remains below that root. Existing directory
 components below the root must not be symbolic links or Windows junctions;
-markhq rejects them with `PATH_COLLISION` instead of following them outside
+mdhq rejects them with `PATH_COLLISION` instead of following them outside
 the storage tree.
 
 `_assets` is reserved at the storage root. A normalized host that conflicts
@@ -358,7 +358,7 @@ HTTP(S) image destinations are kept as absolute URLs, the representative
 image remains an absolute frontmatter URL, the result `assets` array is empty,
 and `_assets` is not created.
 
-markhq does not rewrite ordinary links to other locally stored Markdown
+mdhq does not rewrite ordinary links to other locally stored Markdown
 files.
 
 ## Assets
@@ -378,7 +378,7 @@ Downloaded asset candidates are:
 - the representative article image from Defuddle metadata
 
 favicon, CSS background images, video, audio, and images removed by Defuddle
-are not discovered by markhq.
+are not discovered by mdhq.
 
 Recognized Content-Type mappings:
 
@@ -443,7 +443,7 @@ Metadata fields are emitted when non-empty:
 - `image`
 - `image_source`
 
-markhq-controlled fields:
+mdhq-controlled fields:
 
 - `source`: final page URL
 - `requested_url`: original URL, only when different from `source`
@@ -455,7 +455,7 @@ markhq-controlled fields:
 second-level precision. A valid existing `created` string is preserved
 verbatim during an update, including its original UTC offset.
 
-Configured exclusions and values are applied before markhq-controlled fields.
+Configured exclusions and values are applied before mdhq-controlled fields.
 Consequently `source`, `requested_url`, `type`, `created`, and `modified`
 cannot be removed or overridden by frontmatter configuration. Other fields,
 including extracted metadata and `image`, can be excluded or replaced.
@@ -491,11 +491,11 @@ No persistent lock files are created.
 
 Initial Markdown and asset publication requires filesystem hard-link support.
 This is supported by standard Windows NTFS volumes and common Linux and macOS
-filesystems. markhq returns a storage or asset error rather than degrading to
+filesystems. mdhq returns a storage or asset error rather than degrading to
 a partially visible copy on a filesystem that rejects hard links.
 
 Simultaneous updates of the same URL identity are allowed. Each replacement
-is atomic, but markhq does not provide compare-and-swap semantics between
+is atomic, but mdhq does not provide compare-and-swap semantics between
 same-identity writers. The last successful rename determines the final
 document.
 
@@ -510,7 +510,7 @@ Current warning codes:
 - `ASSET_FETCH_FAILED`
 - `INVALID_IMAGE_URL`
 
-Fatal library errors are instances of `MarkhqError`. See
+Fatal library errors are instances of `MdhqError`. See
 [Library API reference](library-api.md#error-model) for the current codes.
 
 ## Current limitations

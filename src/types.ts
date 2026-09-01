@@ -1,6 +1,6 @@
 import type { DefuddleOptions } from "defuddle/node";
 
-export interface MarkhqWarning {
+export interface MdhqWarning {
   code: string;
   message: string;
   url?: string;
@@ -48,7 +48,7 @@ export interface GetPageOptions {
   maxRedirects?: number;
   useAsync?: boolean;
   now?: () => Date;
-  onWarning?: (warning: MarkhqWarning) => void;
+  onWarning?: (warning: MdhqWarning) => void;
 }
 
 export interface AssetResult {
@@ -65,5 +65,5 @@ export interface GetPageResult {
   path: string;
   status: "saved" | "updated" | "skipped";
   assets: AssetResult[];
-  warnings: MarkhqWarning[];
+  warnings: MdhqWarning[];
 }

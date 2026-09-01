@@ -1,7 +1,8 @@
 export { convertHtml } from "./convert/convert-html.js";
 export { getPage } from "./get-page.js";
-export { MarkhqError } from "./errors.js";
-export type { MarkhqErrorCode } from "./errors.js";
+export { MdhqError } from "./errors.js";
+export type { MdhqErrorCode } from "./errors.js";
+export type { MdhqConfig } from "./config/config.js";
 export type {
   AssetResult,
   ConvertedPage,
@@ -9,6 +10,6 @@ export type {
   GetPageOptions,
   GetPageResult,
   HeaderValue,
-  MarkhqWarning,
+  MdhqWarning,
   PageMetadata
 } from "./types.js";

@@ -1,5 +1,5 @@
 import { domainToASCII } from "node:url";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 import { canonicalPathname } from "./pathname.js";
 
 export interface UrlIdentity {
@@ -14,10 +14,10 @@ export function parseHttpUrl(input: string | URL): URL {
   try {
     url = input instanceof URL ? new URL(input.href) : new URL(input);
   } catch (error) {
-    throw new MarkhqError("INVALID_URL", `Invalid URL: ${String(input)}`, { cause: error });
+    throw new MdhqError("INVALID_URL", `Invalid URL: ${String(input)}`, { cause: error });
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new MarkhqError("UNSUPPORTED_SCHEME", `Unsupported URL scheme: ${url.protocol}`);
+    throw new MdhqError("UNSUPPORTED_SCHEME", `Unsupported URL scheme: ${url.protocol}`);
   }
   return url;
 }

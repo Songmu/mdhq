@@ -1,6 +1,6 @@
 import path from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 import { parseDocumentFrontmatter } from "../frontmatter/frontmatter.js";
 import { sameUrlIdentity } from "../url/identity.js";
 import { publishFileExclusive, replaceFileAtomic } from "./atomic.js";
@@ -28,11 +28,11 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return undefined;
     }
-    throw new MarkhqError("STORAGE_ERROR", `Failed to read ${filePath}`, { cause: error });
+    throw new MdhqError("STORAGE_ERROR", `Failed to read ${filePath}`, { cause: error });
   }
   const frontmatter = parseDocumentFrontmatter(content);
   if (typeof frontmatter?.source !== "string") {
-    throw new MarkhqError(
+    throw new MdhqError(
       "PATH_COLLISION",
       `Existing file does not contain a valid source URL: ${filePath}`
     );
@@ -58,7 +58,7 @@ function assertSameIdentity(
     matches = false;
   }
   if (!matches) {
-    throw new MarkhqError(
+    throw new MdhqError(
       "PATH_COLLISION",
       `Storage path is already used by another URL: ${filePath}`
     );
@@ -109,10 +109,10 @@ export async function saveDocument(
       );
       return "skipped";
     } catch (error) {
-      if (error instanceof MarkhqError) {
+      if (error instanceof MdhqError) {
         throw error;
       }
-      throw new MarkhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
+      throw new MdhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
         cause: error
       });
     }
@@ -131,10 +131,10 @@ export async function saveDocument(
       );
       return "skipped";
     } catch (error) {
-      if (error instanceof MarkhqError) {
+      if (error instanceof MdhqError) {
         throw error;
       }
-      throw new MarkhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
+      throw new MdhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
         cause: error
       });
     }
@@ -154,9 +154,9 @@ export async function saveDocument(
     });
     return "updated";
   } catch (error) {
-    if (error instanceof MarkhqError) {
+    if (error instanceof MdhqError) {
       throw error;
     }
-    throw new MarkhqError("STORAGE_ERROR", `Failed to update ${options.path}`, { cause: error });
+    throw new MdhqError("STORAGE_ERROR", `Failed to update ${options.path}`, { cause: error });
   }
 }

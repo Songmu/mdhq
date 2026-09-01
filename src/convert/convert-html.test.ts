@@ -4,7 +4,7 @@ import { convertHtml } from "./convert-html.js";
 describe("convertHtml", () => {
   it("extracts Markdown and metadata from HTML", async () => {
     const result = await convertHtml({
-      html: `<!doctype html><html><head><title>Example</title></head><body><article><h1>Example</h1><p>Hello world from markhq.</p></article></body></html>`,
+      html: `<!doctype html><html><head><title>Example</title></head><body><article><h1>Example</h1><p>Hello world from mdhq.</p></article></body></html>`,
       url: "https://example.com/article",
       defuddle: { useAsync: false }
     });

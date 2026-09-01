@@ -6,8 +6,8 @@ import { assertSafeDestination } from "./path-safety.js";
 
 describe("assertSafeDestination", () => {
   it("rejects a directory symlink below the storage root", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "markhq-safe-root-"));
-    const outside = await mkdtemp(path.join(os.tmpdir(), "markhq-safe-outside-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-safe-root-"));
+    const outside = await mkdtemp(path.join(os.tmpdir(), "mdhq-safe-outside-"));
     await symlink(
       outside,
       path.join(root, "example.com"),
@@ -19,7 +19,7 @@ describe("assertSafeDestination", () => {
   });
 
   it("accepts ordinary directories below the storage root", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "markhq-safe-root-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-safe-root-"));
     await mkdir(path.join(root, "example.com"));
     await expect(
       assertSafeDestination(root, path.join(root, "example.com", "page.md"))
@@ -27,7 +27,7 @@ describe("assertSafeDestination", () => {
   });
 
   it("does not create a missing storage root during inspection", async () => {
-    const parent = await mkdtemp(path.join(os.tmpdir(), "markhq-safe-parent-"));
+    const parent = await mkdtemp(path.join(os.tmpdir(), "mdhq-safe-parent-"));
     const root = path.join(parent, "missing");
     await expect(
       assertSafeDestination(root, path.join(root, "example.com", "page.md"))

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { lstat, realpath } from "node:fs/promises";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 
 function isWithin(root: string, target: string): boolean {
   const relative = path.relative(root, target);
@@ -18,7 +18,7 @@ export async function assertSafeDestination(
   const resolvedRoot = path.resolve(root);
   const resolvedTarget = path.resolve(target);
   if (!isWithin(resolvedRoot, resolvedTarget)) {
-    throw new MarkhqError(
+    throw new MdhqError(
       "PATH_COLLISION",
       `Storage path escapes its root: ${resolvedTarget}`
     );
@@ -34,7 +34,7 @@ export async function assertSafeDestination(
     throw error;
   }
   if (!rootMetadata.isDirectory() && !rootMetadata.isSymbolicLink()) {
-    throw new MarkhqError(
+    throw new MdhqError(
       "PATH_COLLISION",
       `Storage root is not a directory: ${resolvedRoot}`
     );
@@ -54,20 +54,20 @@ export async function assertSafeDestination(
       throw error;
     }
     if (metadata.isSymbolicLink()) {
-      throw new MarkhqError(
+      throw new MdhqError(
         "PATH_COLLISION",
         `Storage directory is a symbolic link: ${current}`
       );
     }
     if (!metadata.isDirectory()) {
-      throw new MarkhqError(
+      throw new MdhqError(
         "PATH_COLLISION",
         `Storage path component is not a directory: ${current}`
       );
     }
     const realCurrent = await realpath(current);
     if (!isWithin(realRoot, realCurrent) && realCurrent !== realRoot) {
-      throw new MarkhqError(
+      throw new MdhqError(
         "PATH_COLLISION",
         `Storage directory escapes its root: ${current}`
       );

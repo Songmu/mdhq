@@ -5,7 +5,7 @@ import path from "node:path";
 
 const npmCli = process.env.npm_execpath;
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-package-"));
+const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-package-"));
 const packageDirectory = path.join(directory, "package");
 const consumerDirectory = path.join(directory, "consumer");
 
@@ -39,7 +39,7 @@ try {
   );
   execFileSync(
     process.execPath,
-    ["--input-type=module", "-e", 'await import("markhq")'],
+    ["--input-type=module", "-e", 'await import("mdhq")'],
     { cwd: consumerDirectory, stdio: "inherit" }
   );
   await access(
@@ -47,20 +47,27 @@ try {
       consumerDirectory,
       "node_modules",
       ".bin",
-      process.platform === "win32" ? "markhq.cmd" : "markhq"
+      process.platform === "win32" ? "mdhq.cmd" : "mdhq"
     )
   );
-  const version = runNpm(["exec", "--offline", "--", "markhq", "--version"], {
+  const version = runNpm(["exec", "--offline", "--", "mdhq", "--version"], {
     cwd: consumerDirectory,
     encoding: "utf8"
   }).trim();
   if (!version) {
-    throw new Error("Installed markhq executable produced no version output");
+    throw new Error("Installed mdhq executable produced no version output");
   }
   await readFile(
-    path.join(consumerDirectory, "node_modules", "markhq", "docs", "specification.md"),
+    path.join(consumerDirectory, "node_modules", "mdhq", "docs", "specification.md"),
     "utf8"
   );
+  const declarations = await readFile(
+    path.join(consumerDirectory, "node_modules", "mdhq", "dist", "index.d.ts"),
+    "utf8"
+  );
+  if (!declarations.includes("MdhqConfig")) {
+    throw new Error("Packed mdhq declarations do not export MdhqConfig");
+  }
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

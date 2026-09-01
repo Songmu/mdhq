@@ -1,5 +1,5 @@
 import { Defuddle } from "defuddle/node";
-import { MarkhqError } from "../errors.js";
+import { MdhqError } from "../errors.js";
 import type { ConvertedPage, ConvertHtmlOptions, PageMetadata } from "../types.js";
 
 function nonempty(value: string | undefined): string | undefined {
@@ -11,7 +11,7 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
   try {
     url = options.url instanceof URL ? new URL(options.url.href) : new URL(options.url);
   } catch (error) {
-    throw new MarkhqError("INVALID_URL", `Invalid base URL: ${String(options.url)}`, {
+    throw new MdhqError("INVALID_URL", `Invalid base URL: ${String(options.url)}`, {
       cause: error
     });
   }
@@ -23,7 +23,7 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
     });
     const markdown = result.content?.trim();
     if (!markdown) {
-      throw new MarkhqError("CONVERSION_FAILED", `Defuddle returned no content for ${url.href}`);
+      throw new MdhqError("CONVERSION_FAILED", `Defuddle returned no content for ${url.href}`);
     }
     const metadata: PageMetadata = {};
     const stringFields = {
@@ -47,9 +47,9 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
     }
     return { markdown, metadata };
   } catch (error) {
-    if (error instanceof MarkhqError) {
+    if (error instanceof MdhqError) {
       throw error;
     }
-    throw new MarkhqError("CONVERSION_FAILED", `Failed to convert ${url.href}`, { cause: error });
+    throw new MdhqError("CONVERSION_FAILED", `Failed to convert ${url.href}`, { cause: error });
   }
 }
