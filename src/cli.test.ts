@@ -10,6 +10,7 @@ describe("CLI", () => {
   let server: ReturnType<typeof createServer>;
   let url: string;
   let root: string;
+  let originalEnv: Pick<NodeJS.ProcessEnv, "MDHQ_ROOT" | "XDG_CONFIG_HOME" | "XDG_DATA_HOME">;
 
   beforeEach(async () => {
     server = createServer((request, response) => {
@@ -29,12 +30,24 @@ describe("CLI", () => {
     const address = server.address() as AddressInfo;
     url = `http://127.0.0.1:${address.port}/article`;
     root = await mkdtemp(path.join(os.tmpdir(), "mdhq-cli-"));
+    originalEnv = {
+      MDHQ_ROOT: process.env.MDHQ_ROOT,
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+      XDG_DATA_HOME: process.env.XDG_DATA_HOME
+    };
   });
 
   afterEach(async () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve()))
     );
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   });
 
   it("prints only the path by default", async () => {
@@ -214,5 +227,116 @@ describe("CLI", () => {
       await runCli(["node", "mdhq", "list", "--root", path.join(root, "missing")], io)
     ).toBe(1);
     expect(stderr).toContain("Failed to list storage root");
+  });
+
+  it("prints the explicit effective storage root", async () => {
+    const missingRoot = path.join(root, "missing");
+    let stdout = "";
+    let stderr = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+
+    expect(await runCli(["node", "mdhq", "root", "--root", missingRoot], io)).toBe(0);
+    expect(stdout).toBe(`${path.resolve(missingRoot)}\n`);
+    expect(stderr).toBe("");
+    await expect(access(missingRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("prints the environment storage root before configuration", async () => {
+    const configHome = path.join(root, "config-home");
+    const configRoot = path.join(root, "config-root");
+    const envRoot = path.join(root, "env-root");
+    await mkdir(path.join(configHome, "mdhq"), { recursive: true });
+    await writeFile(
+      path.join(configHome, "mdhq", "config.json"),
+      JSON.stringify({ root: configRoot })
+    );
+    process.env.XDG_CONFIG_HOME = configHome;
+    process.env.MDHQ_ROOT = envRoot;
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+
+    expect(await runCli(["node", "mdhq", "root"], io)).toBe(0);
+    expect(stdout).toBe(`${path.resolve(envRoot)}\n`);
+  });
+
+  it("prints the configured storage root and warnings", async () => {
+    const configHome = path.join(root, "config-home");
+    const configRoot = path.join(root, "config-root");
+    await mkdir(path.join(configHome, "mdhq"), { recursive: true });
+    await writeFile(
+      path.join(configHome, "mdhq", "config.json"),
+      JSON.stringify({ root: configRoot, future: true })
+    );
+    delete process.env.MDHQ_ROOT;
+    process.env.XDG_CONFIG_HOME = configHome;
+    let stdout = "";
+    let stderr = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+
+    expect(await runCli(["node", "mdhq", "root"], io)).toBe(0);
+    expect(stdout).toBe(`${path.resolve(configRoot)}\n`);
+    expect(stderr).toBe("warning: Unknown configuration key: future\n");
+  });
+
+  it("prints the default XDG data storage root", async () => {
+    const configHome = path.join(root, "empty-config-home");
+    const dataHome = path.join(root, "data-home");
+    delete process.env.MDHQ_ROOT;
+    process.env.XDG_CONFIG_HOME = configHome;
+    process.env.XDG_DATA_HOME = dataHome;
+    let stdout = "";
+    let stderr = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+
+    expect(await runCli(["node", "mdhq", "root"], io)).toBe(0);
+    expect(stdout).toBe(`${path.join(dataHome, "mdhq")}\n`);
+    expect(stderr).toBe("");
   });
 });
