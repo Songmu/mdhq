@@ -52,6 +52,7 @@ const configSchema = z
     timeoutMs: z.number().int().positive().optional(),
     maxResponseBytes: z.number().int().positive().optional(),
     maxRedirects: z.number().int().nonnegative().optional(),
+    assets: z.boolean().optional(),
     useAsync: z.boolean().optional(),
     defuddle: defuddleSchema.optional(),
     frontmatter: frontmatterSchema.optional(),
@@ -65,6 +66,7 @@ export interface MarkhqConfig {
   timeoutMs?: number;
   maxResponseBytes?: number;
   maxRedirects?: number;
+  assets?: boolean;
   useAsync?: boolean;
   defuddle?: Omit<DefuddleOptions, "fetch" | "markdown" | "separateMarkdown" | "url">;
   frontmatter?: {
@@ -80,6 +82,7 @@ const KNOWN_TOP_LEVEL = new Set([
   "timeoutMs",
   "maxResponseBytes",
   "maxRedirects",
+  "assets",
   "useAsync",
   "defuddle",
   "frontmatter",

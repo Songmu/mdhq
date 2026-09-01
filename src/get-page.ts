@@ -127,17 +127,23 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     }
   }
   const transformed = transformMarkdown(converted.markdown, finalUrl.href);
-  const assetHttp = fetched.customHeadersAllowed ? http : { ...http, headers: [] };
-  const localized = await localizeAssets({
-    markdown: transformed.markdown,
-    imageUrls: transformed.imageUrls,
-    ...(metadata.image ? { representativeImage: metadata.image } : {}),
-    markdownPath,
-    root,
-    baseUrl: finalUrl.href,
-    http: assetHttp,
-    warn
-  });
+  const assetsEnabled = options.assets ?? loaded.config.assets ?? true;
+  const localized = assetsEnabled
+    ? await localizeAssets({
+        markdown: transformed.markdown,
+        imageUrls: transformed.imageUrls,
+        ...(metadata.image ? { representativeImage: metadata.image } : {}),
+        markdownPath,
+        root,
+        baseUrl: finalUrl.href,
+        http: fetched.customHeadersAllowed ? http : { ...http, headers: [] },
+        warn
+      })
+    : {
+        markdown: transformed.markdown,
+        assets: [],
+        ...(metadata.image ? { representativeImage: metadata.image } : {})
+      };
   const now = options.now?.() ?? new Date();
   const created =
     existing?.created && !Number.isNaN(Date.parse(existing.created))

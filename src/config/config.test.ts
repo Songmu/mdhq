@@ -9,8 +9,12 @@ describe("configuration", () => {
     expect(defaultConfigPath({ XDG_CONFIG_HOME: "/config" })).toBe(
       path.join("/config", "markhq", "config.json")
     );
-    expect(resolveRoot("/cli", { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe("/cli");
-    expect(resolveRoot(undefined, { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe("/env");
+    expect(resolveRoot("/cli", { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe(
+      path.resolve("/cli")
+    );
+    expect(resolveRoot(undefined, { root: "/config-root" }, { MARKHQ_ROOT: "/env" })).toBe(
+      path.resolve("/env")
+    );
   });
 
   it("warns for unknown keys while accepting the configuration", async () => {
@@ -20,12 +24,14 @@ describe("configuration", () => {
       file,
       JSON.stringify({
         root: "/tmp/data",
+        assets: false,
         future: true,
         defuddle: { useAsync: false, futureOption: true }
       })
     );
     const result = await loadConfig(file);
     expect(result.config.root).toBe("/tmp/data");
+    expect(result.config.assets).toBe(false);
     expect(result.warnings).toHaveLength(2);
   });
 

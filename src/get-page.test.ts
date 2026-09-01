@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -98,6 +98,29 @@ describe("getPage", () => {
       useAsync: false
     });
     expect(skipped.status).toBe("skipped");
+  });
+
+  it.each([
+    ["library option", { assets: false }],
+    ["configuration", { config: { assets: false } }]
+  ])("saves absolute image URLs without creating _assets via %s", async (_label, mode) => {
+    const configPath = path.join(root, "config.json");
+    if ("config" in mode) {
+      await writeFile(configPath, JSON.stringify(mode.config));
+    }
+    const result = await getPage({
+      url: `${baseUrl}/article`,
+      root,
+      useAsync: false,
+      ...("assets" in mode ? { assets: mode.assets } : { configPath })
+    });
+    const document = await readFile(result.path, "utf8");
+    expect(result.assets).toEqual([]);
+    expect(document).toContain(`image: ${baseUrl}/image.png`);
+    expect(document).toContain(`![Example](${baseUrl}/image.png)`);
+    await expect(access(path.join(root, "_assets"))).rejects.toMatchObject({
+      code: "ENOENT"
+    });
   });
 
   it("does not restore caller headers for assets after a cross-origin redirect", async () => {

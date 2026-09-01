@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtemp } from "node:fs/promises";
+import { access, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,11 +12,17 @@ describe("CLI", () => {
   let root: string;
 
   beforeEach(async () => {
-    server = createServer((_request, response) => {
+    server = createServer((request, response) => {
+      if (request.url === "/image.png") {
+        response
+          .writeHead(200, { "content-type": "image/png" })
+          .end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html" })
         .end(
-          "<html><head><title>CLI Example</title></head><body><article><p>CLI article content.</p></article></body></html>"
+          "<html><head><title>CLI Example</title></head><body><article><p>CLI article content.</p><img src=\"/image.png\" alt=\"Example\"></article></body></html>"
         );
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -70,6 +76,27 @@ describe("CLI", () => {
       await runCli(["node", "markhq", "get", "--root", root, "--json", url], io)
     ).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({ requestedUrl: url, status: "saved" });
+  });
+
+  it("does not create _assets with --no-assets", async () => {
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+    expect(
+      await runCli(["node", "markhq", "get", "--root", root, "--no-assets", url], io)
+    ).toBe(0);
+    const document = await readFile(stdout.trim(), "utf8");
+    expect(document).toContain(`![Example](${new URL("/image.png", url).href})`);
+    await expect(access(path.join(root, "_assets"))).rejects.toMatchObject({
+      code: "ENOENT"
+    });
   });
 
   it("reports malformed headers", async () => {
