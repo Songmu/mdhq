@@ -36,6 +36,6 @@ updates:
       prefix: ci
       include: scope
     groups:
-      github-actions:
+      official-github-actions:
         patterns:
-          - "*"
+          - "actions/*"
