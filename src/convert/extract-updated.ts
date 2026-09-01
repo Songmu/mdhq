@@ -1,13 +1,10 @@
 import { parseHTML } from "linkedom";
 import { normalizeSourceDate } from "../date.js";
 
-const ARTICLE_TYPES = new Set([
-  "Article",
-  "BlogPosting",
+const ARTICLE_LIKE_TYPES = new Set([
   "CreativeWork",
-  "NewsArticle",
+  "APIReference",
   "Report",
-  "TechArticle",
   "WebPage"
 ]);
 
@@ -27,6 +24,15 @@ function schemaTypeName(value: string): string {
   return value;
 }
 
+function isArticleLikeType(value: string): boolean {
+  const name = schemaTypeName(value);
+  return (
+    ARTICLE_LIKE_TYPES.has(name) ||
+    name.endsWith("Article") ||
+    name.endsWith("Posting")
+  );
+}
+
 function collectJsonLdDates(value: unknown, dates: string[]): void {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -39,7 +45,7 @@ function collectJsonLdDates(value: unknown, dates: string[]): void {
   }
   const object = value as Record<string, unknown>;
   if (
-    types(object["@type"]).some((type) => ARTICLE_TYPES.has(schemaTypeName(type))) &&
+    types(object["@type"]).some(isArticleLikeType) &&
     typeof object.dateModified === "string"
   ) {
     dates.push(object.dateModified);
@@ -70,7 +76,12 @@ function attributeValue(
 export function extractUpdatedDate(html: string): string | undefined {
   const { document } = parseHTML(html);
   const candidates: string[] = [];
-  for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+  for (const script of document.querySelectorAll("script[type]")) {
+    const mediaType =
+      script.getAttribute("type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    if (mediaType !== "application/ld+json") {
+      continue;
+    }
     try {
       collectJsonLdDates(JSON.parse(script.textContent ?? ""), candidates);
     } catch {

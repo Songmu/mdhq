@@ -25,17 +25,17 @@ import {
   sameHttpTarget
 } from "./url/identity.js";
 
-export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
-  const requestedUrl = parseHttpUrl(options.url).href;
-  return getPageAttempt(options, requestedUrl, requestedUrl, 2);
+interface GetPageContext {
+  options: GetPageOptions;
+  requestedUrl: string;
+  loaded: Awaited<ReturnType<typeof loadConfig>>;
+  warnings: MdhqWarning[];
+  warn: (warning: MdhqWarning) => void;
+  root: string;
 }
 
-async function getPageAttempt(
-  options: GetPageOptions,
-  requestedUrl: string,
-  fetchUrl: string,
-  retriesRemaining: number
-): Promise<GetPageResult> {
+export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
+  const requestedUrl = parseHttpUrl(options.url).href;
   const loaded = await loadConfig(options.configPath);
   const warnings: MdhqWarning[] = [];
   const warn = (warning: MdhqWarning): void => {
@@ -46,6 +46,19 @@ async function getPageAttempt(
     warn(warning);
   }
   const root = resolveRoot(options.root, loaded.config);
+  return getPageAttempt(
+    { options, requestedUrl, loaded, warnings, warn, root },
+    requestedUrl,
+    2
+  );
+}
+
+async function getPageAttempt(
+  context: GetPageContext,
+  fetchUrl: string,
+  retriesRemaining: number
+): Promise<GetPageResult> {
+  const { options, requestedUrl, loaded, warnings, warn, root } = context;
   const requested = new URL(fetchUrl);
   const requestedConfig = resolveHostConfig(
     normalizeHost(requested),
@@ -167,12 +180,7 @@ async function getPageAttempt(
           `Destination changed repeatedly while updating ${requestedPath}`
         );
       }
-      return getPageAttempt(
-        options,
-        requestedUrl,
-        fetchUrl,
-        retriesRemaining - 1
-      );
+      return getPageAttempt(context, fetchUrl, retriesRemaining - 1);
     }
     return {
       requestedUrl,
@@ -212,12 +220,7 @@ async function getPageAttempt(
         `Redirect destination changed repeatedly while updating ${markdownPath}`
       );
     }
-    return getPageAttempt(
-      options,
-      requestedUrl,
-      finalUrl.href,
-      retriesRemaining - 1
-    );
+    return getPageAttempt(context, finalUrl.href, retriesRemaining - 1);
   }
   if (existing && !options.update) {
     return {
@@ -326,12 +329,7 @@ async function getPageAttempt(
         `Destination changed repeatedly while updating ${markdownPath}`
       );
     }
-    return getPageAttempt(
-      options,
-      requestedUrl,
-      fetchUrl,
-      retriesRemaining - 1
-    );
+    return getPageAttempt(context, fetchUrl, retriesRemaining - 1);
   }
   return {
     requestedUrl,

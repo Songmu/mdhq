@@ -423,9 +423,11 @@ Assets are stored under:
 <root>/_assets/<sha256-of-content>.<extension>
 ```
 
-The hash input is the complete fetched response body after redirects. The
-asset URL and query string do not affect the path when the response bytes are
-identical.
+The digest component is calculated from the complete fetched response body
+after redirects. The extension is selected from Content-Type, falling back to
+the final URL pathname when Content-Type is missing. Identical bytes therefore
+share the same digest, while differing media metadata can still select a
+different extension.
 
 Downloaded asset candidates are:
 

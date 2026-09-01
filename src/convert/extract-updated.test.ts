@@ -45,6 +45,16 @@ describe("extractUpdatedDate", () => {
     ).toBe("2026-08-31");
   });
 
+  it("accepts concrete Article subtypes and case-insensitive JSON-LD media types", () => {
+    expect(
+      extractUpdatedDate(`<html><head>
+        <script type="Application/LD+JSON; charset=utf-8">
+          {"@type":"https://schema.org/ScholarlyArticle","dateModified":"2026-08-31"}
+        </script>
+      </head></html>`)
+    ).toBe("2026-08-31");
+  });
+
   it("matches dateModified in a multi-token itemprop", () => {
     expect(
       extractUpdatedDate(

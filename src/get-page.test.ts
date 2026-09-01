@@ -493,9 +493,12 @@ describe("getPage", () => {
   });
 
   it("restarts a 200 update when the destination changes during conversion", async () => {
+    const configPath = path.join(root, "config.json");
+    await writeFile(configPath, JSON.stringify({ futureOption: true }));
     const first = await getPage({
       url: `${baseUrl}/changing`,
       root,
+      configPath,
       assets: false,
       useAsync: false
     });
@@ -512,14 +515,21 @@ describe("getPage", () => {
         concurrentBody
       )
     };
+    const warningCodes: string[] = [];
     const updated = await getPage({
       url: `${baseUrl}/changing`,
       root,
+      configPath,
       assets: false,
       update: true,
-      useAsync: false
+      useAsync: false,
+      onWarning: (warning) => warningCodes.push(warning.code)
     });
     expect(updated.status).toBe("unchanged");
+    expect(warningCodes.filter((code) => code === "UNKNOWN_CONFIG_KEY")).toHaveLength(1);
+    expect(
+      updated.warnings.filter((warning) => warning.code === "UNKNOWN_CONFIG_KEY")
+    ).toHaveLength(1);
     expect(
       conditionalHeaders.filter((request) => request.path === "/changing")
     ).toHaveLength(3);
