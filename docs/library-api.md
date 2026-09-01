@@ -18,6 +18,7 @@ Runtime exports:
 
 Type-only exports:
 
+- `MdhqConfig`
 - `MdhqErrorCode`
 - `AssetResult`
 - `ConvertedPage`
@@ -32,7 +33,7 @@ TypeScript callers should import types with `import type`:
 
 ```ts
 import { getPage, MdhqError } from "mdhq";
-import type { GetPageOptions, GetPageResult } from "mdhq";
+import type { GetPageOptions, GetPageResult, MdhqConfig } from "mdhq";
 ```
 
 ## `convertHtml`

@@ -61,6 +61,13 @@ try {
     path.join(consumerDirectory, "node_modules", "mdhq", "docs", "specification.md"),
     "utf8"
   );
+  const declarations = await readFile(
+    path.join(consumerDirectory, "node_modules", "mdhq", "dist", "index.d.ts"),
+    "utf8"
+  );
+  if (!declarations.includes("MdhqConfig")) {
+    throw new Error("Packed mdhq declarations do not export MdhqConfig");
+  }
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
