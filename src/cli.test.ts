@@ -71,4 +71,41 @@ describe("CLI", () => {
     ).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({ requestedUrl: url, status: "saved" });
   });
+
+  it("reports malformed headers", async () => {
+    let stderr = "";
+    const io: CliIo = {
+      stdout: { write: () => true },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+    expect(
+      await runCli(["node", "markhq", "get", "--header", "invalid", url], io)
+    ).toBe(1);
+    expect(stderr).toContain("Invalid header");
+  });
+
+  it.each([" : value", "Bad Name: value"])(
+    "rejects an invalid HTTP header name: %s",
+    async (header) => {
+      let stderr = "";
+      const io: CliIo = {
+        stdout: { write: () => true },
+        stderr: {
+          write: (value) => {
+            stderr += String(value);
+            return true;
+          }
+        }
+      };
+      expect(
+        await runCli(["node", "markhq", "get", "--header", header, url], io)
+      ).toBe(1);
+      expect(stderr).toContain("Invalid header");
+    }
+  );
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -75,5 +75,19 @@ describe("saveDocument", () => {
     ]);
     expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
     expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
+  });
+
+  it("reports malformed existing documents as path collisions", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-save-"));
+    const file = path.join(directory, "example.md");
+    await writeFile(file, "---\ninvalid: [\n---\nbody");
+    await expect(
+      saveDocument({
+        path: file,
+        content: "replacement",
+        sourceUrl: "https://example.com/page",
+        update: true
+      })
+    ).rejects.toMatchObject({ code: "PATH_COLLISION" });
   });
 });

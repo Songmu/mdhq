@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command, Option } from "commander";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MarkhqError } from "./errors.js";
@@ -14,11 +15,15 @@ function collect(value: string, previous: string[]): string[] {
 function parseHeaders(values: string[]): HeaderValue[] {
   return values.map((value) => {
     const separator = value.indexOf(":");
-    if (separator <= 0) {
-      throw new MarkhqError("INVALID_URL", `Invalid header: ${value}`);
+    const name = value.slice(0, Math.max(separator, 0)).trim();
+    if (
+      separator <= 0 ||
+      !/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u.test(name)
+    ) {
+      throw new MarkhqError("INVALID_HEADER", `Invalid header: ${value}`);
     }
     return {
-      name: value.slice(0, separator).trim(),
+      name,
       value: value.slice(separator + 1).trim()
     };
   });
@@ -34,6 +39,14 @@ export function createProgram(io: CliIo = process): Command {
     .name("markhq")
     .version(VERSION)
     .description("Save web pages as Markdown.");
+  program.configureOutput({
+    writeOut: (value) => {
+      io.stdout.write(value);
+    },
+    writeErr: (value) => {
+      io.stderr.write(value);
+    }
+  });
 
   program
     .command("get")
@@ -85,9 +98,16 @@ export async function runCli(argv = process.argv, io: CliIo = process): Promise<
   }
 }
 
-const isMain =
-  process.argv[1] !== undefined &&
-  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+let isMain = false;
+if (process.argv[1] !== undefined) {
+  try {
+    isMain =
+      realpathSync(fileURLToPath(import.meta.url)) ===
+      realpathSync(path.resolve(process.argv[1]));
+  } catch {
+    isMain = false;
+  }
+}
 if (isMain) {
   process.exitCode = await runCli();
 }

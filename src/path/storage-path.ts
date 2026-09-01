@@ -2,25 +2,31 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { MarkhqError } from "../errors.js";
 import { createUrlIdentity, parseHttpUrl } from "../url/identity.js";
-import { decodeUrlPathSegment } from "../url/pathname.js";
-
-const HTML_EXTENSIONS = new Set([
-  ".html",
-  ".htm",
-  ".xhtml",
-  ".php",
-  ".asp",
-  ".aspx",
-  ".jsp",
-  ".jspx"
-]);
+import { decodeUrlPathSegment, storageBasename } from "../url/pathname.js";
 const INVALID_CHARACTERS = /[\/\\:*?"<>|\u0000-\u001f\u007f]/u;
-const WINDOWS_DEVICES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu;
+const WINDOWS_DEVICES =
+  /^(con|prn|aux|nul|com(?:[1-9]|[¹²³])|lpt(?:[1-9]|[¹²³]))(?:\.|$)/iu;
 const MAX_SEGMENT_BYTES = 240;
-const MAX_ABSOLUTE_PATH_BYTES = 1000;
+const MAX_ABSOLUTE_PATH_LENGTH = process.platform === "win32" ? 240 : 1000;
 
 function md5(value: string): string {
   return createHash("md5").update(value).digest("hex");
+}
+
+function absolutePathLength(value: string): number {
+  return process.platform === "win32" ? value.length : Buffer.byteLength(value);
+}
+
+function ensureWithinRoot(root: string, target: string): string {
+  const relative = path.relative(root, target);
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new MarkhqError("PATH_COLLISION", `Storage path escapes its root: ${target}`);
+  }
+  return target;
 }
 
 function encodeCharacter(character: string): string {
@@ -52,14 +58,8 @@ function fitSegment(rawSegment: string, suffix = ""): string {
 }
 
 function markdownFilename(rawSegment: string): string {
-  const normalized = decodeUrlPathSegment(rawSegment);
-  const extension = path.posix.extname(normalized).toLowerCase();
-  const basename = HTML_EXTENSIONS.has(extension)
-    ? normalized.slice(0, -extension.length)
-    : normalized;
-  const suffix = ".md";
-  const safe = fitSegment(encodeURIComponent(basename), suffix);
-  return `${safe}${suffix}`;
+  const safe = fitSegment(encodeURIComponent(storageBasename(rawSegment)), ".md");
+  return `${safe}.md`;
 }
 
 function hostDirectory(url: URL): string {
@@ -68,10 +68,11 @@ function hostDirectory(url: URL): string {
   const host = ipv6
     ? `[${ipv6[1]?.replaceAll(":", "_")}]${ipv6[2] ? `_${ipv6[2]}` : ""}`
     : identity.host.replaceAll(":", "_");
-  if (host.toLowerCase() === "_assets") {
+  const safeHost = fitSegment(encodeURIComponent(host));
+  if (safeHost.toLowerCase() === "_assets") {
     throw new MarkhqError("PATH_COLLISION", "The normalized host conflicts with _assets");
   }
-  return host;
+  return safeHost;
 }
 
 export interface StoragePathOptions {
@@ -97,28 +98,36 @@ export function storagePathForUrl(options: StoragePathOptions): string {
     filename = markdownFilename(rawSegments.at(-1) ?? "index");
   }
 
-  const host = hostDirectory(url);
-  const segments = [...directories, filename];
-  let result = path.resolve(options.root, host, ...segments);
-  if (Buffer.byteLength(result) <= MAX_ABSOLUTE_PATH_BYTES) {
-    return result;
+  const allSegments = [hostDirectory(url), ...directories, filename];
+  const resolvedRoot = path.resolve(options.root);
+  let result = path.resolve(resolvedRoot, ...allSegments);
+  if (absolutePathLength(result) <= MAX_ABSOLUTE_PATH_LENGTH) {
+    return ensureWithinRoot(resolvedRoot, result);
   }
 
-  const candidates = segments
-    .map((segment, index) => ({ index, bytes: Buffer.byteLength(segment) }))
-    .sort((a, b) => b.bytes - a.bytes);
+  const candidates = allSegments
+    .map((segment, index) => ({
+      index,
+      length: absolutePathLength(segment),
+      replacementLength: segment.endsWith(".md") ? 35 : 32
+    }))
+    .filter((candidate) => candidate.length > candidate.replacementLength)
+    .sort((a, b) => b.length - a.length);
   for (const candidate of candidates) {
-    const current = segments[candidate.index];
+    const current = allSegments[candidate.index];
     if (!current) {
       continue;
     }
-    segments[candidate.index] = current.endsWith(".md")
+    allSegments[candidate.index] = current.endsWith(".md")
       ? `${md5(current.slice(0, -3))}.md`
       : md5(current);
-    result = path.resolve(options.root, host, ...segments);
-    if (Buffer.byteLength(result) <= MAX_ABSOLUTE_PATH_BYTES) {
-      return result;
+    result = path.resolve(resolvedRoot, ...allSegments);
+    if (absolutePathLength(result) <= MAX_ABSOLUTE_PATH_LENGTH) {
+      return ensureWithinRoot(resolvedRoot, result);
     }
   }
-  throw new MarkhqError("PATH_TOO_LONG", `Storage root is too long: ${options.root}`);
+  throw new MarkhqError(
+    "PATH_TOO_LONG",
+    `Storage path is too long for ${url.href}: ${result}`
+  );
 }

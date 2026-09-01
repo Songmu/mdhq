@@ -20,4 +20,40 @@ describe("Markdown transforms", () => {
       )
     ).toContain("(../_assets/image.png)");
   });
+
+  it("preserves GFM and rewrites reference-style links and images", () => {
+    const transformed = transformMarkdown(
+      "| a | b |\n| - | - |\n| 1 | 2 |\n\n~~gone~~\n\n[link][target]\n\n![image][asset]\n\n[target]: /next\n[asset]: /image.png",
+      "https://example.com/article"
+    );
+    expect(transformed.markdown).toContain("| a | b |");
+    expect(transformed.markdown).toContain("~~gone~~");
+    expect(transformed.markdown).toContain(
+      "[target]: https://example.com/next"
+    );
+    expect(transformed.imageUrls).toEqual(["https://example.com/image.png"]);
+    expect(
+      rewriteImageUrls(
+        transformed.markdown,
+        new Map([["https://example.com/image.png", "../_assets/image.png"]])
+      )
+    ).toContain("[asset]: ../_assets/image.png");
+  });
+
+  it("leaves data images untouched without scheduling a download", () => {
+    const result = transformMarkdown(
+      "![inline](data:image/png;base64,AAAA)",
+      "https://example.com/article"
+    );
+    expect(result.imageUrls).toEqual([]);
+    expect(result.markdown).toContain("data:image/png;base64,AAAA");
+  });
+
+  it("uses the first duplicate reference definition", () => {
+    const result = transformMarkdown(
+      "![image][asset]\n\n[asset]: /first.png\n[asset]: /second.png",
+      "https://example.com/article"
+    );
+    expect(result.imageUrls).toEqual(["https://example.com/first.png"]);
+  });
 });

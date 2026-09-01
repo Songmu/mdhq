@@ -97,4 +97,7 @@ npm install
 npm test
 npm run typecheck
 npm run build
+npm run test:package
 ```
+
+CI runs the same checks on Linux and Windows.

@@ -62,8 +62,16 @@ describe("configuration pattern matching", () => {
     expect(
       resolveHostConfig("xn--r8jz45g.example", "/", {
         "*.EXAMPLE": { entryQueryKey: "wildcard" },
-        "例え.EXAMPLE:443": { entryQueryKey: "exact" }
+        "例え.EXAMPLE": { entryQueryKey: "exact" }
       })
     ).toEqual({ entryQueryKey: "exact" });
+  });
+
+  it("retains explicitly configured cross-scheme ports", () => {
+    expect(
+      resolveHostConfig("example.com:443", "/", {
+        "example.com:443": { entryQueryKey: "id" }
+      })
+    ).toEqual({ entryQueryKey: "id" });
   });
 });

@@ -23,7 +23,10 @@ export function parseHttpUrl(input: string | URL): URL {
 }
 
 export function normalizeHost(url: URL): string {
-  const hostname = domainToASCII(url.hostname.toLowerCase());
+  const rawHostname = url.hostname.toLowerCase();
+  const hostname = domainToASCII(
+    /^\.+$/u.test(rawHostname) ? rawHostname : rawHostname.replace(/\.+$/u, "")
+  );
   const standardPort =
     (url.protocol === "http:" && url.port === "80") ||
     (url.protocol === "https:" && url.port === "443");
@@ -35,16 +38,15 @@ export function createUrlIdentity(
   entryQueryKey?: string
 ): UrlIdentity {
   const url = parseHttpUrl(input);
+  const entryValue = entryQueryKey ? url.searchParams.get(entryQueryKey) : null;
+  const hasEntryValue = entryValue !== null && entryValue !== "";
   const identity: UrlIdentity = {
     host: normalizeHost(url),
-    pathname: canonicalPathname(url.pathname || "/")
+    pathname: canonicalPathname(url.pathname || "/", hasEntryValue)
   };
-  if (entryQueryKey) {
-    const value = url.searchParams.get(entryQueryKey);
-    if (value !== null && value !== "") {
-      identity.entryKey = entryQueryKey;
-      identity.entryValue = value;
-    }
+  if (entryQueryKey && hasEntryValue) {
+    identity.entryKey = entryQueryKey;
+    identity.entryValue = entryValue.normalize("NFC");
   }
   return identity;
 }

@@ -181,8 +181,11 @@ Protected fields cannot be removed or overridden by configuration.
 patterns.
 
 Before matching, URL hosts are lowercased, converted to IDNA ASCII, and
-normalized for ports. Host patterns are also lowercased, literal labels are
-converted to IDNA ASCII, and `:80` or `:443` is removed.
+normalized for trailing DNS dots and ports. Host patterns are also lowercased
+and literal labels are converted to IDNA ASCII. Explicit ports in patterns
+are retained. A pattern such as `example.com:443` therefore matches an
+explicit non-standard HTTP port 443, while an HTTPS URL using its standard
+port matches `example.com`.
 
 Selection order:
 

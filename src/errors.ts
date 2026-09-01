@@ -1,5 +1,6 @@
 export type MarkhqErrorCode =
   | "INVALID_URL"
+  | "INVALID_HEADER"
   | "UNSUPPORTED_SCHEME"
   | "UNSUPPORTED_CONTENT_TYPE"
   | "RESPONSE_TOO_LARGE"

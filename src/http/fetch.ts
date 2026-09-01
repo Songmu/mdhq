@@ -23,6 +23,7 @@ export interface FetchedResource {
   finalUrl: string;
   contentType: string;
   status: number;
+  customHeadersAllowed: boolean;
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
@@ -60,6 +61,7 @@ function contentType(value: string | null): string {
 async function readLimited(response: Response, limit: number): Promise<Uint8Array> {
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > limit) {
+    await response.body?.cancel().catch(() => undefined);
     throw new MarkhqError("RESPONSE_TOO_LARGE", `Response exceeds ${limit} bytes`);
   }
   if (!response.body) {
@@ -97,14 +99,14 @@ export async function fetchResource(
   const maxResponseBytes = options.maxResponseBytes ?? 20 * 1024 * 1024;
   const maxRedirects = options.maxRedirects ?? 10;
   let url = parseHttpUrl(input);
-  const originalOrigin = url.origin;
+  let customHeadersAllowed = true;
 
   for (let redirects = 0; ; redirects += 1) {
     let response: Response;
     try {
       response = (await undiciFetch(url, {
         dispatcher: proxyAgent,
-        headers: requestHeaders(options, url.origin === originalOrigin),
+        headers: requestHeaders(options, customHeadersAllowed),
         redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs)
       })) as unknown as Response;
@@ -115,29 +117,63 @@ export async function fetchResource(
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       if (!location) {
+        await response.body?.cancel().catch(() => undefined);
         throw new MarkhqError("FETCH_FAILED", `Redirect response has no Location: ${url.href}`);
       }
       if (redirects >= maxRedirects) {
+        await response.body?.cancel().catch(() => undefined);
         throw new MarkhqError("TOO_MANY_REDIRECTS", `Too many redirects: ${String(input)}`);
       }
-      url = parseHttpUrl(new URL(location, url));
+      let nextUrl: URL;
+      try {
+        nextUrl = parseHttpUrl(new URL(location, url));
+      } catch (error) {
+        await response.body?.cancel().catch(() => undefined);
+        if (error instanceof MarkhqError && error.code === "UNSUPPORTED_SCHEME") {
+          throw error;
+        }
+        throw new MarkhqError(
+          "FETCH_FAILED",
+          `Invalid redirect Location for ${url.href}: ${location}`,
+          { cause: error }
+        );
+      }
+      if (nextUrl.origin !== url.origin) {
+        customHeadersAllowed = false;
+      }
+      await response.body?.cancel().catch(() => undefined);
+      url = nextUrl;
       continue;
     }
     if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
       throw new MarkhqError("FETCH_FAILED", `HTTP ${response.status} for ${url.href}`);
     }
     const type = contentType(response.headers.get("content-type"));
     if (options.acceptedContentTypes && !options.acceptedContentTypes.includes(type)) {
+      await response.body?.cancel().catch(() => undefined);
       throw new MarkhqError(
         "UNSUPPORTED_CONTENT_TYPE",
         `Unsupported Content-Type ${type || "(missing)"} for ${url.href}`
       );
     }
+    let body: Uint8Array;
+    try {
+      body = await readLimited(response, maxResponseBytes);
+    } catch (error) {
+      if (error instanceof MarkhqError) {
+        throw error;
+      }
+      throw new MarkhqError("FETCH_FAILED", `Failed to read response body from ${url.href}`, {
+        cause: error
+      });
+    }
     return {
-      body: await readLimited(response, maxResponseBytes),
+      body,
       finalUrl: url.href,
       contentType: type,
-      status: response.status
+      status: response.status,
+      customHeadersAllowed
     };
   }
 }
@@ -145,13 +181,14 @@ export async function fetchResource(
 export async function fetchHtml(
   input: string | URL,
   options: FetchResourceOptions = {}
-): Promise<{ html: string; finalUrl: string }> {
+): Promise<{ html: string; finalUrl: string; customHeadersAllowed: boolean }> {
   const resource = await fetchResource(input, {
     ...options,
     acceptedContentTypes: ["text/html", "application/xhtml+xml"]
   });
   return {
     html: new TextDecoder().decode(resource.body),
-    finalUrl: resource.finalUrl
+    finalUrl: resource.finalUrl,
+    customHeadersAllowed: resource.customHeadersAllowed
   };
 }

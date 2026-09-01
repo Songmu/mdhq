@@ -56,7 +56,7 @@ function normalizeHostPattern(pattern: string): string {
       /[*?[\]{}()!+@]/u.test(label) ? label : domainToASCII(label)
     )
     .join(".");
-  return port && port !== "80" && port !== "443" ? `${normalized}:${port}` : normalized;
+  return port ? `${normalized}:${port}` : normalized;
 }
 
 function selectPattern<T>(

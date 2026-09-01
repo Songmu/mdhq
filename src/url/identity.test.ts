@@ -42,4 +42,26 @@ describe("URL identity", () => {
       )
     ).toBe(true);
   });
+
+  it("aligns identity with path-equivalent URL variants", () => {
+    expect(sameUrlIdentity("https://example.com/x", "https://example.com/x/")).toBe(true);
+    expect(
+      sameUrlIdentity("https://example.com/x", "https://example.com/x.html")
+    ).toBe(true);
+    expect(
+      sameUrlIdentity("https://example.com/", "https://example.com/index.html")
+    ).toBe(true);
+    expect(
+      sameUrlIdentity("https://example.com/a//b", "https://example.com/a/b")
+    ).toBe(true);
+  });
+
+  it("normalizes a DNS trailing dot", () => {
+    expect(
+      sameUrlIdentity(
+        "https://example.com./article",
+        "https://example.com/article"
+      )
+    ).toBe(true);
+  });
 });

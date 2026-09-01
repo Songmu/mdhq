@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "README.md",
     "LICENSE"
   ],
@@ -24,9 +25,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:package": "node scripts/package-smoke.mjs",
+    "test:watch": "vitest",
+    "prepack": "npm run build"
   },
   "keywords": [
     "markdown",
@@ -42,9 +45,15 @@
   "dependencies": {
     "commander": "^14.0.0",
     "defuddle": "0.19.3",
+    "linkedom": "^0.18.12",
+    "mathml-to-latex": "^1.8.0",
+    "mdast-util-gfm": "^3.1.0",
     "mdast-util-from-markdown": "^2.0.2",
     "mdast-util-to-markdown": "^2.1.2",
+    "micromark-extension-gfm": "^3.0.0",
     "minimatch": "^10.0.3",
+    "temml": "^0.13.3",
+    "turndown": "^7.2.0",
     "undici": "^7.15.0",
     "yaml": "^2.8.1",
     "zod": "^4.1.5"

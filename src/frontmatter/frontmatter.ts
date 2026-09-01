@@ -80,8 +80,12 @@ export function parseDocumentFrontmatter(document: string): Record<string, unkno
   if (end < 0) {
     return undefined;
   }
-  const value = parse(document.slice(4, end));
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  try {
+    const value = parse(document.slice(4, end));
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

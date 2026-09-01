@@ -182,7 +182,8 @@ interface AssetResult {
 - `sourceUrl` is the absolute pre-fetch asset URL discovered in Markdown or
   representative-image metadata.
 - `path` is the absolute local asset path.
-- `saved` means a new asset file was created.
+- `saved` means a new asset file was created or differing existing content
+  was atomically replaced.
 - `reused` means the deterministic asset path already existed.
 - `failed` means the Markdown operation continued without localizing that
   asset.
@@ -211,6 +212,7 @@ Current warning codes:
 | --- | --- |
 | `UNKNOWN_CONFIG_KEY` | A JSON configuration key is not recognized but processing continues. |
 | `ASSET_FETCH_FAILED` | An individual asset could not be fetched, validated, or saved. |
+| `INVALID_IMAGE_URL` | Defuddle returned an invalid or non-HTTP(S) representative-image URL; the page is saved without that metadata field. |
 
 Warnings are both accumulated in the result and delivered to `onWarning`.
 
@@ -230,6 +232,7 @@ Current error codes:
 | Code | Meaning |
 | --- | --- |
 | `INVALID_URL` | A URL or URL path encoding is invalid. |
+| `INVALID_HEADER` | A CLI `--header` value does not use `Name: value` syntax. |
 | `UNSUPPORTED_SCHEME` | The high-level operation received a non-HTTP(S) URL or a redirect used one. |
 | `UNSUPPORTED_CONTENT_TYPE` | A page response was not HTML or XHTML. |
 | `RESPONSE_TOO_LARGE` | A page exceeded the configured byte limit. The same condition for an individual asset is converted to an `ASSET_FETCH_FAILED` warning and failed asset result by `getPage`. |

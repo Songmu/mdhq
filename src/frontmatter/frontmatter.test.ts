@@ -34,4 +34,8 @@ describe("frontmatter", () => {
     });
     expect(fields.created).toBe("2026-08-30T10:00:00-04:00");
   });
+
+  it("treats malformed YAML as unrecognized frontmatter", () => {
+    expect(parseDocumentFrontmatter("---\ninvalid: [\n---\nbody")).toBeUndefined();
+  });
 });

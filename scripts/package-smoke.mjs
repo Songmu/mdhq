@@ -1,0 +1,71 @@
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+const npmCli = process.env.npm_execpath;
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const directory = await mkdtemp(path.join(os.tmpdir(), "markhq-package-"));
+const packageDirectory = path.join(directory, "package");
+const consumerDirectory = path.join(directory, "consumer");
+
+try {
+  await mkdir(packageDirectory);
+  await mkdir(consumerDirectory);
+  const runNpm = (arguments_, options = {}) =>
+    npmCli
+      ? execFileSync(process.execPath, [npmCli, ...arguments_], options)
+      : execFileSync(npm, arguments_, {
+          ...options,
+          shell: process.platform === "win32"
+        });
+  const tarball = runNpm(
+    ["pack", "--pack-destination", packageDirectory, "--silent"],
+    { cwd: process.cwd(), encoding: "utf8" }
+  ).trim();
+  await writeFile(
+    path.join(consumerDirectory, "package.json"),
+    JSON.stringify({ private: true, type: "module" })
+  );
+  runNpm(
+    [
+      "install",
+      "--omit=optional",
+      "--no-audit",
+      "--no-fund",
+      path.join(packageDirectory, tarball)
+    ],
+    { cwd: consumerDirectory, stdio: "inherit" }
+  );
+  execFileSync(
+    process.execPath,
+    ["--input-type=module", "-e", 'await import("markhq")'],
+    { cwd: consumerDirectory, stdio: "inherit" }
+  );
+  const binPath = path.join(
+    consumerDirectory,
+    "node_modules",
+    ".bin",
+    process.platform === "win32" ? "markhq.cmd" : "markhq"
+  );
+  const version =
+    process.platform === "win32"
+      ? execFileSync(
+          process.env.ComSpec ?? "cmd.exe",
+          ["/d", "/s", "/c", `"${binPath}" --version`],
+          { cwd: consumerDirectory, encoding: "utf8" }
+        ).trim()
+      : execFileSync(binPath, ["--version"], {
+          cwd: consumerDirectory,
+          encoding: "utf8"
+        }).trim();
+  if (!version) {
+    throw new Error("Installed markhq executable produced no version output");
+  }
+  await readFile(
+    path.join(consumerDirectory, "node_modules", "markhq", "docs", "specification.md"),
+    "utf8"
+  );
+} finally {
+  await rm(directory, { recursive: true, force: true });
+}

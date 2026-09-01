@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { MarkhqError } from "../errors.js";
 import { parseDocumentFrontmatter } from "../frontmatter/frontmatter.js";
 import { sameUrlIdentity } from "../url/identity.js";
+import { publishFileExclusive, replaceFileAtomic } from "./atomic.js";
+import { assertSafeDestination } from "./path-safety.js";
 
 export interface SaveDocumentOptions {
   path: string;
@@ -11,6 +12,7 @@ export interface SaveDocumentOptions {
   sourceUrl: string;
   update: boolean;
   entryQueryKey?: string;
+  root?: string;
 }
 
 export interface ExistingDocument {
@@ -29,31 +31,66 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
     throw new MarkhqError("STORAGE_ERROR", `Failed to read ${filePath}`, { cause: error });
   }
   const frontmatter = parseDocumentFrontmatter(content);
-  return typeof frontmatter?.source === "string"
-    ? {
-        sourceUrl: frontmatter.source,
-        ...(typeof frontmatter.created === "string" ? { created: frontmatter.created } : {})
-      }
-    : undefined;
+  if (typeof frontmatter?.source !== "string") {
+    throw new MarkhqError(
+      "PATH_COLLISION",
+      `Existing file does not contain a valid source URL: ${filePath}`
+    );
+  }
+  return {
+    sourceUrl: frontmatter.source,
+    ...(typeof frontmatter.created === "string" ? { created: frontmatter.created } : {})
+  };
 }
 
 function assertSameIdentity(
   existing: ExistingDocument | undefined,
   sourceUrl: string,
-  entryQueryKey?: string
+  entryQueryKey: string | undefined,
+  filePath: string
 ): void {
-  if (!existing || !sameUrlIdentity(existing.sourceUrl, sourceUrl, entryQueryKey)) {
-    throw new MarkhqError("PATH_COLLISION", `Storage path is already used by another URL`);
+  let matches = false;
+  try {
+    matches =
+      existing !== undefined &&
+      sameUrlIdentity(existing.sourceUrl, sourceUrl, entryQueryKey);
+  } catch {
+    matches = false;
   }
+  if (!matches) {
+    throw new MarkhqError(
+      "PATH_COLLISION",
+      `Storage path is already used by another URL: ${filePath}`
+    );
+  }
+}
+
+export async function inspectDestination(
+  filePath: string,
+  sourceUrl: string,
+  entryQueryKey?: string,
+  root?: string
+): Promise<ExistingDocument | undefined> {
+  if (root) {
+    await assertSafeDestination(root, filePath);
+  }
+  const existing = await readExistingDocument(filePath);
+  if (existing) {
+    assertSameIdentity(existing, sourceUrl, entryQueryKey, filePath);
+  }
+  return existing;
 }
 
 export async function saveDocument(
   options: SaveDocumentOptions
 ): Promise<"saved" | "updated" | "skipped"> {
+  if (options.root) {
+    await assertSafeDestination(options.root, options.path);
+  }
   await mkdir(path.dirname(options.path), { recursive: true });
   const existing = await readExistingDocument(options.path);
   if (existing) {
-    assertSameIdentity(existing, options.sourceUrl, options.entryQueryKey);
+    assertSameIdentity(existing, options.sourceUrl, options.entryQueryKey, options.path);
     if (!options.update) {
       return "skipped";
     }
@@ -61,56 +98,65 @@ export async function saveDocument(
 
   if (!options.update) {
     try {
-      await writeFile(options.path, options.content, { flag: "wx" });
-      return "saved";
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw new MarkhqError("STORAGE_ERROR", `Failed to write ${options.path}`, { cause: error });
+      if (await publishFileExclusive(options.path, options.content, options.root)) {
+        return "saved";
       }
       assertSameIdentity(
         await readExistingDocument(options.path),
         options.sourceUrl,
-        options.entryQueryKey
+        options.entryQueryKey,
+        options.path
       );
       return "skipped";
+    } catch (error) {
+      if (error instanceof MarkhqError) {
+        throw error;
+      }
+      throw new MarkhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
+        cause: error
+      });
     }
   }
 
   if (!existing) {
     try {
-      await writeFile(options.path, options.content, { flag: "wx" });
-      return "saved";
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw new MarkhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
-          cause: error
-        });
+      if (await publishFileExclusive(options.path, options.content, options.root)) {
+        return "saved";
       }
       assertSameIdentity(
         await readExistingDocument(options.path),
         options.sourceUrl,
-        options.entryQueryKey
+        options.entryQueryKey,
+        options.path
       );
       return "skipped";
+    } catch (error) {
+      if (error instanceof MarkhqError) {
+        throw error;
+      }
+      throw new MarkhqError("STORAGE_ERROR", `Failed to write ${options.path}`, {
+        cause: error
+      });
     }
   }
 
-  const temporaryPath = path.join(
-    path.dirname(options.path),
-    `.${path.basename(options.path)}.${randomUUID()}.tmp`
-  );
   try {
-    await writeFile(temporaryPath, options.content, { flag: "wx" });
-    assertSameIdentity(
-      await readExistingDocument(options.path),
-      options.sourceUrl,
-      options.entryQueryKey
-    );
-    await rename(temporaryPath, options.path);
+    await replaceFileAtomic(options.path, options.content, {
+      ...(options.root ? { root: options.root } : {}),
+      beforeCommit: async () => {
+        assertSameIdentity(
+          await readExistingDocument(options.path),
+          options.sourceUrl,
+          options.entryQueryKey,
+          options.path
+        );
+      }
+    });
     return "updated";
   } catch (error) {
+    if (error instanceof MarkhqError) {
+      throw error;
+    }
     throw new MarkhqError("STORAGE_ERROR", `Failed to update ${options.path}`, { cause: error });
-  } finally {
-    await unlink(temporaryPath).catch(() => undefined);
   }
 }

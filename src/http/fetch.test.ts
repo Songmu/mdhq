@@ -63,12 +63,61 @@ describe("fetchHtml", () => {
     const redirectAddress = redirect.address() as AddressInfo;
     try {
       await fetchHtml(`http://127.0.0.1:${redirectAddress.port}/redirect`, {
-        headers: [{ name: "Authorization", value: "Bearer secret" }]
+        headers: [{ name: "Authorization", value: "Bearer test-token" }]
       });
       expect(receivedAuthorization).toBeUndefined();
     } finally {
       await new Promise<void>((resolve) => redirect.close(() => resolve()));
       await new Promise<void>((resolve) => target.close(() => resolve()));
+    }
+  });
+
+  it("does not restore custom headers after returning to the original origin", async () => {
+    const received: Array<{ server: string; authorization?: string }> = [];
+    let firstPort = 0;
+    const second = createServer((request, response) => {
+      received.push({
+        server: "second",
+        ...(request.headers.authorization
+          ? { authorization: request.headers.authorization }
+          : {})
+      });
+      response
+        .writeHead(302, { location: `http://127.0.0.1:${firstPort}/final` })
+        .end();
+    });
+    await new Promise<void>((resolve) => second.listen(0, "127.0.0.1", resolve));
+    const secondPort = (second.address() as AddressInfo).port;
+    const first = createServer((request, response) => {
+      received.push({
+        server: "first",
+        ...(request.headers.authorization
+          ? { authorization: request.headers.authorization }
+          : {})
+      });
+      if (request.url === "/start") {
+        response
+          .writeHead(302, { location: `http://127.0.0.1:${secondPort}/bounce` })
+          .end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/html" }).end("<html></html>");
+    });
+    await new Promise<void>((resolve) => first.listen(0, "127.0.0.1", resolve));
+    firstPort = (first.address() as AddressInfo).port;
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${firstPort}/start`, {
+        headers: [{ name: "Authorization", value: "Bearer test-token" }]
+      });
+      expect(result.customHeadersAllowed).toBe(false);
+      expect(received).toEqual([
+        { server: "first", authorization: "Bearer test-token" },
+        { server: "second" },
+        { server: "first" }
+      ]);
+    } finally {
+      await new Promise<void>((resolve) => first.close(() => resolve()));
+      await new Promise<void>((resolve) => second.close(() => resolve()));
     }
   });
 
@@ -82,5 +131,37 @@ describe("fetchHtml", () => {
     await expect(fetchHtml(`${baseUrl}/large`, { maxResponseBytes: 20 })).rejects.toMatchObject({
       code: "RESPONSE_TOO_LARGE"
     });
+  });
+
+  it("wraps body transfer failures", async () => {
+    const broken = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.write("partial");
+      setTimeout(() => response.destroy(), 10);
+    });
+    await new Promise<void>((resolve) => broken.listen(0, "127.0.0.1", resolve));
+    const address = broken.address() as AddressInfo;
+    try {
+      await expect(fetchHtml(`http://127.0.0.1:${address.port}/`)).rejects.toMatchObject({
+        code: "FETCH_FAILED"
+      });
+    } finally {
+      await new Promise<void>((resolve) => broken.close(() => resolve()));
+    }
+  });
+
+  it("wraps malformed redirect locations", async () => {
+    const redirect = createServer((_request, response) => {
+      response.writeHead(302, { location: "http://[" }).end();
+    });
+    await new Promise<void>((resolve) => redirect.listen(0, "127.0.0.1", resolve));
+    const address = redirect.address() as AddressInfo;
+    try {
+      await expect(fetchHtml(`http://127.0.0.1:${address.port}/`)).rejects.toMatchObject({
+        code: "FETCH_FAILED"
+      });
+    } finally {
+      await new Promise<void>((resolve) => redirect.close(() => resolve()));
+    }
   });
 });

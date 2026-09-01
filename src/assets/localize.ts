@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { fetchResource, type FetchResourceOptions } from "../http/fetch.js";
 import { rewriteImageUrls } from "../markdown/transform.js";
+import { publishFileExclusive, replaceFileAtomic } from "../storage/atomic.js";
 import type { AssetResult, MarkhqWarning } from "../types.js";
 
 const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
@@ -14,6 +15,8 @@ const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
   "image/webp": ".webp"
 };
 const IMAGE_EXTENSIONS = new Set(Object.values(CONTENT_TYPE_EXTENSIONS));
+IMAGE_EXTENSIONS.add(".jpeg");
+IMAGE_EXTENSIONS.add(".jfif");
 
 function assetExtension(contentType: string, finalUrl: string): string {
   const fromType = CONTENT_TYPE_EXTENSIONS[contentType];
@@ -24,17 +27,20 @@ function assetExtension(contentType: string, finalUrl: string): string {
   return /^\.[a-z0-9]{1,8}$/u.test(extension) ? extension : ".bin";
 }
 
-async function saveAsset(assetPath: string, body: Uint8Array): Promise<"saved" | "reused"> {
-  await mkdir(path.dirname(assetPath), { recursive: true });
-  try {
-    await writeFile(assetPath, body, { flag: "wx" });
+async function saveAsset(
+  assetPath: string,
+  body: Uint8Array,
+  root: string
+): Promise<"saved" | "reused"> {
+  if (await publishFileExclusive(assetPath, body, root)) {
     return "saved";
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      return "reused";
-    }
-    throw error;
   }
+  const existing = await readFile(assetPath);
+  if (Buffer.from(body).equals(existing)) {
+    return "reused";
+  }
+  await replaceFileAtomic(assetPath, body, { root });
+  return "saved";
 }
 
 export interface LocalizeAssetsOptions {
@@ -55,54 +61,95 @@ export interface LocalizeAssetsResult {
   representativeImageSource?: string;
 }
 
+interface ProcessedAsset {
+  asset: AssetResult;
+  replacement?: string;
+  representative: boolean;
+  warning?: MarkhqWarning;
+}
+
+async function processAsset(
+  sourceUrl: string,
+  options: LocalizeAssetsOptions,
+  representativeImage: string | undefined
+): Promise<ProcessedAsset> {
+  try {
+    const sameOrigin = new URL(sourceUrl).origin === new URL(options.baseUrl).origin;
+    const response = await fetchResource(sourceUrl, {
+      ...options.http,
+      ...(sameOrigin ? {} : { headers: [] })
+    });
+    const urlExtension = path.posix.extname(new URL(response.finalUrl).pathname).toLowerCase();
+    if (
+      (response.contentType && !response.contentType.startsWith("image/")) ||
+      (!response.contentType && !IMAGE_EXTENSIONS.has(urlExtension))
+    ) {
+      throw new Error(`Unsupported asset Content-Type: ${response.contentType || "(missing)"}`);
+    }
+    const digest = createHash("md5").update(response.finalUrl).digest("hex");
+    const assetPath = path.join(
+      options.root,
+      "_assets",
+      `${digest}${assetExtension(response.contentType, response.finalUrl)}`
+    );
+    const status = await saveAsset(assetPath, response.body, options.root);
+    const replacement = path
+      .relative(path.dirname(options.markdownPath), assetPath)
+      .split(path.sep)
+      .join("/");
+    return {
+      asset: {
+        sourceUrl,
+        finalUrl: response.finalUrl,
+        path: assetPath,
+        status
+      },
+      replacement,
+      representative: sourceUrl === representativeImage
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      asset: { sourceUrl, status: "failed", error: message },
+      representative: sourceUrl === representativeImage,
+      warning: { code: "ASSET_FETCH_FAILED", message, url: sourceUrl }
+    };
+  }
+}
+
 export async function localizeAssets(
   options: LocalizeAssetsOptions
 ): Promise<LocalizeAssetsResult> {
-  const representativeImage = options.representativeImage
-    ? new URL(options.representativeImage, options.baseUrl).href
+  const representativeCandidate = options.representativeImage
+    ? new URL(options.representativeImage, options.baseUrl)
     : undefined;
+  const representativeImage =
+    representativeCandidate?.protocol === "http:" ||
+    representativeCandidate?.protocol === "https:"
+      ? representativeCandidate.href
+      : undefined;
   const urls = [...new Set([...options.imageUrls, ...(representativeImage ? [representativeImage] : [])])];
   const replacements = new Map<string, string>();
   const assets: AssetResult[] = [];
   let localRepresentative: string | undefined;
 
-  for (const sourceUrl of urls) {
-    try {
-      const sameOrigin = new URL(sourceUrl).origin === new URL(options.baseUrl).origin;
-      const response = await fetchResource(sourceUrl, {
-        ...options.http,
-        ...(sameOrigin ? {} : { headers: [] })
-      });
-      const urlExtension = path.posix.extname(new URL(response.finalUrl).pathname).toLowerCase();
-      if (
-        (response.contentType && !response.contentType.startsWith("image/")) ||
-        (!response.contentType && !IMAGE_EXTENSIONS.has(urlExtension))
-      ) {
-        throw new Error(`Unsupported asset Content-Type: ${response.contentType || "(missing)"}`);
+  for (let offset = 0; offset < urls.length; offset += 6) {
+    const batch = await Promise.all(
+      urls
+        .slice(offset, offset + 6)
+        .map((sourceUrl) => processAsset(sourceUrl, options, representativeImage))
+    );
+    for (const result of batch) {
+      assets.push(result.asset);
+      if (result.warning) {
+        options.warn(result.warning);
       }
-      const digest = createHash("md5").update(response.finalUrl).digest("hex");
-      const assetPath = path.join(
-        options.root,
-        "_assets",
-        `${digest}${assetExtension(response.contentType, response.finalUrl)}`
-      );
-      const status = await saveAsset(assetPath, response.body);
-      const relative = path.relative(path.dirname(options.markdownPath), assetPath).split(path.sep).join("/");
-      replacements.set(sourceUrl, relative);
-      if (sourceUrl === representativeImage) {
-        localRepresentative = relative;
+      if (result.replacement) {
+        replacements.set(result.asset.sourceUrl, result.replacement);
+        if (result.representative) {
+          localRepresentative = result.replacement;
+        }
       }
-      assets.push({
-        sourceUrl,
-        finalUrl: response.finalUrl,
-        path: assetPath,
-        status
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const warning = { code: "ASSET_FETCH_FAILED", message, url: sourceUrl };
-      options.warn(warning);
-      assets.push({ sourceUrl, status: "failed", error: message });
     }
   }
 

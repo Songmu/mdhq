@@ -6,7 +6,7 @@ import { buildFrontmatter, serializeDocument } from "./frontmatter/frontmatter.j
 import { fetchHtml, fetchWithEnvProxy } from "./http/fetch.js";
 import { transformMarkdown } from "./markdown/transform.js";
 import { storagePathForUrl } from "./path/storage-path.js";
-import { readExistingDocument, saveDocument } from "./storage/save.js";
+import { inspectDestination, saveDocument } from "./storage/save.js";
 import type { GetPageOptions, GetPageResult, MarkhqWarning } from "./types.js";
 import { normalizeHost, parseHttpUrl } from "./url/identity.js";
 
@@ -34,20 +34,18 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     url: requested,
     ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
   });
-  const requestedExisting = await readExistingDocument(requestedPath);
+  const requestedExisting = await inspectDestination(
+    requestedPath,
+    requestedUrl,
+    requestedEntryKey,
+    root
+  );
   if (requestedExisting && !options.update) {
-    const status = await saveDocument({
-      path: requestedPath,
-      content: "",
-      sourceUrl: requestedUrl,
-      update: false,
-      ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
-    });
     return {
       requestedUrl,
       sourceUrl: requestedExisting.sourceUrl,
       path: requestedPath,
-      status,
+      status: "skipped",
       assets: [],
       warnings
     };
@@ -77,20 +75,18 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     url: finalUrl,
     ...(entryQueryKey ? { entryQueryKey } : {})
   });
-  const existing = await readExistingDocument(markdownPath);
+  const existing = await inspectDestination(
+    markdownPath,
+    finalUrl.href,
+    entryQueryKey,
+    root
+  );
   if (existing && !options.update) {
-    const status = await saveDocument({
-      path: markdownPath,
-      content: "",
-      sourceUrl: finalUrl.href,
-      update: false,
-      ...(entryQueryKey ? { entryQueryKey } : {})
-    });
     return {
       requestedUrl,
       sourceUrl: finalUrl.href,
       path: markdownPath,
-      status,
+      status: "skipped",
       assets: [],
       warnings
     };
@@ -109,15 +105,29 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         true
     }
   });
-  const metadata = converted.metadata.image
-    ? {
-        ...converted.metadata,
-        image: new URL(converted.metadata.image, finalUrl).href
+  let metadata = converted.metadata;
+  if (converted.metadata.image) {
+    try {
+      const image = new URL(converted.metadata.image, finalUrl);
+      if (image.protocol !== "http:" && image.protocol !== "https:") {
+        throw new TypeError(`Unsupported image URL scheme: ${image.protocol}`);
       }
-    : converted.metadata;
+      metadata = {
+        ...converted.metadata,
+        image: image.href
+      };
+    } catch {
+      const { image: _invalidImage, ...metadataWithoutImage } = converted.metadata;
+      metadata = metadataWithoutImage;
+      warn({
+        code: "INVALID_IMAGE_URL",
+        message: `Invalid representative image URL: ${converted.metadata.image}`,
+        url: finalUrl.href
+      });
+    }
+  }
   const transformed = transformMarkdown(converted.markdown, finalUrl.href);
-  const assetHttp =
-    requested.origin === finalUrl.origin ? http : { ...http, headers: [] };
+  const assetHttp = fetched.customHeadersAllowed ? http : { ...http, headers: [] };
   const localized = await localizeAssets({
     markdown: transformed.markdown,
     imageUrls: transformed.imageUrls,
@@ -153,6 +163,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     content,
     sourceUrl: finalUrl.href,
     update: options.update ?? false,
+    root,
     ...(entryQueryKey ? { entryQueryKey } : {})
   });
   return {

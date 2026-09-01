@@ -206,6 +206,7 @@ Host normalization:
 
 - lowercases the hostname
 - applies IDNA ASCII conversion
+- removes trailing DNS root dots from ordinary hostnames
 - omits standard ports
 - retains non-standard ports
 
@@ -213,9 +214,12 @@ Path normalization:
 
 - splits the path before decoding, so an encoded slash remains within one
   path segment
+- removes repeated and trailing path separators for identity comparison
 - decodes percent escapes as UTF-8
 - treats an unmatched literal percent sign as a literal percent sign
 - applies Unicode NFC normalization
+- treats a root URL and `/index.html` as the same identity
+- removes a final recognized HTML extension for identity comparison
 - applies canonical percent encoding for identity comparison
 
 The first value returned for the configured entry query key is used. A missing
@@ -294,39 +298,57 @@ The complete `.` and `..` names and Windows reserved device names such as
 
 IPv6 host colons are replaced with underscores while brackets preserve the
 host boundary. A non-standard IPv6 port is appended after an underscore.
+Special hostnames such as `.` and `..` use the same safe-segment encoding and
+cannot escape the selected storage root. The final resolved destination is
+also checked to ensure it remains below that root. Existing directory
+components below the root must not be symbolic links or Windows junctions;
+markhq rejects them with `PATH_COLLISION` instead of following them outside
+the storage tree.
 
 `_assets` is reserved at the storage root. A normalized host that conflicts
 with this name is rejected.
 
 ### Length limits
 
-A generated segment is replaced by its MD5 digest when it would exceed 240
-bytes, including the `.md` suffix for a filename.
+A generated host, directory, or filename segment is replaced by its MD5
+digest when it would exceed 240 bytes, including the `.md` suffix for a
+filename.
 
-If the complete absolute path exceeds 1000 bytes, the longest generated
+On Windows, the complete absolute path target is 240 UTF-16 code units. On
+other platforms, the target is 1000 UTF-8 bytes. The longest generated
 segments are progressively replaced with MD5 digests until the path fits. If
 hashing every eligible segment is insufficient because the root itself is too
 long, path generation fails with `PATH_TOO_LONG`.
 
+The Windows limit can reject unusually deep URLs even after every useful
+segment has been shortened. The resulting error identifies both the URL and
+the final attempted path.
+
 ## Markdown normalization
 
-Defuddle output is parsed as an mdast tree and serialized again after
-transformation. The output therefore follows the serializer's canonical
-Markdown formatting rather than preserving Defuddle's exact whitespace.
+Defuddle output is parsed as an mdast tree with GitHub Flavored Markdown
+extensions and serialized again after transformation. Tables,
+strikethrough, task lists, and GFM autolinks are preserved. The output follows
+the serializer's canonical Markdown formatting rather than preserving
+Defuddle's exact whitespace.
 
 For ordinary links:
 
 - relative URLs are resolved against the final page URL
 - absolute URLs are retained
 - fragment-only links are retained
+- reference-style link definitions are resolved and normalized
 
 For images:
 
 - relative destinations are resolved against the final page URL
+- reference-style image definitions are resolved and localized
 - absolute image URLs are collected for asset localization
 - duplicate source URLs are fetched once
 - successful downloads replace image destinations with relative local paths
 - failed downloads leave the absolute source URL unchanged
+- non-HTTP(S) images such as `data:` URLs are left unchanged and do not
+  produce asset warnings
 
 markhq does not rewrite ordinary links to other locally stored Markdown
 files.
@@ -363,11 +385,18 @@ Recognized Content-Type mappings:
 
 Other explicit `image/*` responses use a safe final-URL extension when one is
 available, otherwise `.bin`. A missing Content-Type is accepted only when the
-final URL ends in one of the recognized generated extensions. An explicitly
-non-image Content-Type is rejected even when the URL looks like an image.
+final URL ends in one of the recognized generated extensions or the common
+`.jpeg` and `.jfif` aliases. An explicitly non-image Content-Type is rejected
+even when the URL looks like an image.
 
-Asset files use exclusive creation. An existing deterministic asset path is
-reused without rewriting the file.
+Up to six assets are fetched concurrently. Result ordering still follows the
+first occurrence in the document.
+
+Asset content is first written completely to a same-directory temporary file.
+A new destination is published without replacing an existing file. When the
+deterministic path already exists, its bytes are compared with the fetched
+content. Identical content is reported as `reused`; differing content is
+atomically replaced and reported as `saved`.
 
 An individual asset failure:
 
@@ -430,7 +459,9 @@ YAML frontmatter containing a string `source` field.
 
 Without `update`:
 
-- the destination is created with exclusive-create semantics
+- content is written completely to a same-directory temporary file
+- the destination is published with an atomic hard link and
+  exclusive-create semantics
 - a same-identity existing file returns `skipped`
 - a different identity or an unrecognized existing file returns
   `PATH_COLLISION`
@@ -450,6 +481,11 @@ With `update`:
 
 No persistent lock files are created.
 
+Initial Markdown and asset publication requires filesystem hard-link support.
+This is supported by standard Windows NTFS volumes and common Linux and macOS
+filesystems. markhq returns a storage or asset error rather than degrading to
+a partially visible copy on a filesystem that rejects hard links.
+
 Simultaneous updates of the same URL identity are allowed. Each replacement
 is atomic, but markhq does not provide compare-and-swap semantics between
 same-identity writers. The last successful rename determines the final
@@ -464,6 +500,7 @@ Current warning codes:
 
 - `UNKNOWN_CONFIG_KEY`
 - `ASSET_FETCH_FAILED`
+- `INVALID_IMAGE_URL`
 
 Fatal library errors are instances of `MarkhqError`. See
 [Library API reference](library-api.md#error-model) for the current codes.
@@ -477,3 +514,10 @@ Fatal library errors are instances of `MarkhqError`. See
 - No local-link conversion between saved Markdown documents is implemented.
 - No asset garbage collection is implemented.
 - No multi-URL CLI mode is implemented.
+- Images and links embedded inside raw HTML Markdown nodes are not rewritten
+  or localized.
+- Initial file publication is unsupported on filesystems without hard-link
+  support.
+- Case-sensitive URL paths that differ only by letter case collide on
+  case-insensitive filesystems such as default Windows NTFS and many macOS
+  volumes. The second URL is rejected with `PATH_COLLISION`.

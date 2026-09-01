@@ -24,6 +24,30 @@ describe("getPage", () => {
         );
         return;
       }
+      if (request.url === "/invalid-image") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>Invalid Image</title><meta property=\"og:image\" content=\"http://[\"></head><body><article><p>Valid page content.</p></article></body></html>"
+          );
+        return;
+      }
+      if (request.url === "/data-image") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>Data Image</title><meta property=\"og:image\" content=\"data:image/png;base64,AAAA\"></head><body><article><p>Valid page content.</p></article></body></html>"
+          );
+        return;
+      }
+      if (request.url === "/failed-image") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>Failed Image</title><meta property=\"og:image\" content=\"/missing.png\"></head><body><article><p>Valid page content.</p></article></body></html>"
+          );
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html" })
         .end(`<!doctype html>
@@ -114,5 +138,42 @@ describe("getPage", () => {
     } finally {
       await new Promise<void>((resolve) => target.close(() => resolve()));
     }
+  });
+
+  it("warns and continues for an invalid representative image URL", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/invalid-image`,
+      root,
+      useAsync: false
+    });
+    expect(result.status).toBe("saved");
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: "INVALID_IMAGE_URL" })
+    );
+  });
+
+  it("omits a non-HTTP representative image URL", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/data-image`,
+      root,
+      useAsync: false
+    });
+    const document = await readFile(result.path, "utf8");
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: "INVALID_IMAGE_URL" })
+    );
+    expect(document).not.toContain("data:image/png");
+  });
+
+  it("keeps an absolute representative image when localization fails", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/failed-image`,
+      root,
+      useAsync: false
+    });
+    const document = await readFile(result.path, "utf8");
+    expect(result.assets[0]?.status).toBe("failed");
+    expect(document).toContain(`image: ${baseUrl}/missing.png`);
+    expect(document).not.toContain("image_source:");
   });
 });
