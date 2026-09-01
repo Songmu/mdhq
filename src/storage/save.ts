@@ -11,11 +11,13 @@ export interface SaveDocumentOptions {
   content: string;
   sourceUrl: string;
   update: boolean;
+  expectedContent?: string;
   entryQueryKey?: string;
   root?: string;
 }
 
 export interface ExistingDocument {
+  content: string;
   sourceUrl: string;
   frontmatter: Record<string, unknown>;
   markdown: string;
@@ -45,6 +47,7 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
   const frontmatter = parsed.frontmatter;
   const sourceUrl = frontmatter.source as string;
   return {
+    content,
     sourceUrl,
     frontmatter,
     markdown: parsed.markdown,
@@ -97,7 +100,7 @@ export async function inspectDestination(
 
 export async function saveDocument(
   options: SaveDocumentOptions
-): Promise<"saved" | "updated" | "skipped"> {
+): Promise<"saved" | "updated" | "skipped" | "conflicted"> {
   if (options.root) {
     await assertSafeDestination(options.root, options.path);
   }
@@ -105,6 +108,12 @@ export async function saveDocument(
   const existing = await readExistingDocument(options.path);
   if (existing) {
     assertSameIdentity(existing, options.sourceUrl, options.entryQueryKey, options.path);
+    if (
+      options.expectedContent !== undefined &&
+      existing.content !== options.expectedContent
+    ) {
+      return "conflicted";
+    }
     if (!options.update) {
       return "skipped";
     }
@@ -158,19 +167,31 @@ export async function saveDocument(
     await replaceFileAtomic(options.path, options.content, {
       ...(options.root ? { root: options.root } : {}),
       beforeCommit: async () => {
+        const current = await readExistingDocument(options.path);
         assertSameIdentity(
-          await readExistingDocument(options.path),
+          current,
           options.sourceUrl,
           options.entryQueryKey,
           options.path
         );
+        if (
+          options.expectedContent !== undefined &&
+          current?.content !== options.expectedContent
+        ) {
+          throw new DestinationChangedError();
+        }
       }
     });
     return "updated";
   } catch (error) {
+    if (error instanceof DestinationChangedError) {
+      return "conflicted";
+    }
     if (error instanceof MdhqError) {
       throw error;
     }
     throw new MdhqError("STORAGE_ERROR", `Failed to update ${options.path}`, { cause: error });
   }
 }
+
+class DestinationChangedError extends Error {}

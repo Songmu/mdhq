@@ -56,6 +56,30 @@ describe("saveDocument", () => {
     expect(await readFile(file, "utf8")).toContain("second");
   });
 
+  it("does not replace a document that changed after inspection", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
+    const file = path.join(directory, "example.md");
+    const first = serializeDocument(
+      { source: "https://example.com/page", etag: '"v1"' },
+      "first"
+    );
+    const second = serializeDocument(
+      { source: "https://example.com/page", etag: '"v2"' },
+      "second"
+    );
+    await writeFile(file, second);
+    expect(
+      await saveDocument({
+        path: file,
+        content: first,
+        sourceUrl: "https://example.com/page",
+        update: true,
+        expectedContent: first
+      })
+    ).toBe("conflicted");
+    expect(await readFile(file, "utf8")).toBe(second);
+  });
+
   it("does not overwrite a concurrently created document during update", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
     const file = path.join(directory, "example.md");

@@ -140,6 +140,11 @@ and asset downloads, updates `modified`, and returns `unchanged`. A 200
 response replaces stored validators with the response values; validators that
 are absent from a 200 response are removed.
 
+Before saving a 304 result, mdhq verifies that the destination still matches
+the exact document snapshot used for the conditional request. If another
+writer changed it while the request was in flight, mdhq leaves that document
+untouched and retries the page with an unconditional GET.
+
 Page responses must have one of these media types:
 
 - `text/html`

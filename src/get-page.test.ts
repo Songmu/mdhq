@@ -4,7 +4,11 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseDocument } from "./frontmatter/frontmatter.js";
+import {
+  markdownContentDigest,
+  parseDocument,
+  serializeDocument
+} from "./frontmatter/frontmatter.js";
 import { getPage } from "./get-page.js";
 
 describe("getPage", () => {
@@ -15,6 +19,9 @@ describe("getPage", () => {
   let changingBody: string;
   let includeChangingEtag: boolean;
   let removeBeforeNotModified: string | undefined;
+  let replaceBeforeNotModified:
+    | { path: string; content: string; responseBody: string }
+    | undefined;
   let conditionalHeaders: Array<{
     path: string;
     etag?: string;
@@ -25,6 +32,7 @@ describe("getPage", () => {
     changingBody = "First version";
     includeChangingEtag = false;
     removeBeforeNotModified = undefined;
+    replaceBeforeNotModified = undefined;
     conditionalHeaders = [];
     server = createServer((request, response) => {
       conditionalHeaders.push({
@@ -38,6 +46,21 @@ describe("getPage", () => {
       });
       if (request.url === "/conditional-etag") {
         if (request.headers["if-none-match"] === '"v1"') {
+          if (replaceBeforeNotModified) {
+            const replacement = replaceBeforeNotModified;
+            replaceBeforeNotModified = undefined;
+            void writeFile(replacement.path, replacement.content)
+              .then(() => {
+                changingBody = replacement.responseBody;
+                response.writeHead(304, { etag: '"v1"' }).end();
+              })
+              .catch((error: unknown) =>
+                response.destroy(
+                  error instanceof Error ? error : new Error(String(error))
+                )
+              );
+            return;
+          }
           if (removeBeforeNotModified) {
             const file = removeBeforeNotModified;
             removeBeforeNotModified = undefined;
@@ -56,10 +79,10 @@ describe("getPage", () => {
         response
           .writeHead(200, {
             "content-type": "text/html",
-            etag: '"v1"'
+            etag: changingBody === "First version" ? '"v1"' : '"v2"'
           })
           .end(
-            "<html><head><title>Conditional</title></head><body><article><p>Stable content for ETag.</p><img src=\"/image.png\" alt=\"Example\"></article></body></html>"
+            `<html><head><title>Conditional</title></head><body><article><p>${changingBody}</p><img src="/image.png" alt="Example"></article></body></html>`
           );
         return;
       }
@@ -375,8 +398,52 @@ describe("getPage", () => {
     });
     expect(updated.status).toBe("saved");
     expect(parseDocument(await readFile(updated.path, "utf8"))?.markdown).toContain(
-      "Stable content for ETag."
+      "First version"
     );
+  });
+
+  it("retries unconditionally when the destination changes before a 304 save", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    const concurrentBody = "Second version written by a concurrent update.";
+    replaceBeforeNotModified = {
+      path: first.path,
+      responseBody: concurrentBody,
+      content: serializeDocument(
+        {
+          ...before?.frontmatter,
+          etag: '"v2"',
+          content_digest: markdownContentDigest(`${concurrentBody}\n`)
+        },
+        concurrentBody
+      )
+    };
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      update: true,
+      headers: [{ name: "If-Modified-Since", value: "caller-value" }],
+      useAsync: false
+    });
+    expect(updated.status).toBe("updated");
+    expect(
+      conditionalHeaders.filter(
+        (request) => request.path === "/conditional-etag"
+      )
+    ).toEqual([
+      { path: "/conditional-etag" },
+      { path: "/conditional-etag", etag: '"v1"' },
+      { path: "/conditional-etag" }
+    ]);
+    const document = parseDocument(await readFile(updated.path, "utf8"));
+    expect(document?.frontmatter.etag).toBe('"v2"');
+    expect(document?.markdown).toContain(concurrentBody);
   });
 
   it("replaces an invalid stored created timestamp during a 304 update", async () => {

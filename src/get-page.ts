@@ -92,7 +92,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       }
     }
   }
-  const fetched = await fetchHtml(requestedUrl, {
+  let fetched = await fetchHtml(requestedUrl, {
     ...http,
     ...(conditional ? { conditional } : {})
   });
@@ -147,17 +147,38 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       content,
       sourceUrl: requestedExisting.sourceUrl,
       update: true,
+      expectedContent: requestedExisting.content,
       root,
       ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
     });
-    return {
-      requestedUrl,
-      sourceUrl: requestedExisting.sourceUrl,
-      path: requestedPath,
-      status: storageStatus === "updated" ? "unchanged" : storageStatus,
-      assets: [],
-      warnings
-    };
+    if (storageStatus !== "conflicted") {
+      return {
+        requestedUrl,
+        sourceUrl: requestedExisting.sourceUrl,
+        path: requestedPath,
+        status: storageStatus === "updated" ? "unchanged" : storageStatus,
+        assets: [],
+        warnings
+      };
+    }
+    fetched = await fetchHtml(requestedUrl, {
+      ...http,
+      ...(headers
+        ? {
+            headers: headers.filter(
+              (header) =>
+                header.name.toLowerCase() !== "if-none-match" &&
+                header.name.toLowerCase() !== "if-modified-since"
+            )
+          }
+        : {})
+    });
+    if (fetched.notModified) {
+      throw new MdhqError(
+        "FETCH_FAILED",
+        `HTTP 304 for unconditional retry of ${requestedUrl}`
+      );
+    }
   }
   const finalUrl = new URL(fetched.finalUrl);
   const matchedConfig = resolveHostConfig(
@@ -272,6 +293,12 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     root,
     ...(entryQueryKey ? { entryQueryKey } : {})
   });
+  if (storageStatus === "conflicted") {
+    throw new MdhqError(
+      "STORAGE_ERROR",
+      `Unexpected destination conflict while saving ${markdownPath}`
+    );
+  }
   return {
     requestedUrl,
     sourceUrl: finalUrl.href,
