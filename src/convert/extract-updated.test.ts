@@ -170,4 +170,37 @@ describe("extractUpdatedDate", () => {
       )
     ).toBe("2026-09-01");
   });
+
+  it("recognizes fragment-based article links without a WebPage object", () => {
+    for (const article of [
+      {
+        "@type": "NewsArticle",
+        "@id": "https://example.com/article#article",
+        dateModified: "2026-09-01"
+      },
+      {
+        "@type": "NewsArticle",
+        mainEntityOfPage: {
+          "@id": "https://example.com/article#webpage"
+        },
+        dateModified: "2026-09-01"
+      }
+    ]) {
+      expect(
+        extractUpdatedDate(
+          `<script type="application/ld+json">${JSON.stringify({
+            "@graph": [
+              {
+                "@type": "NewsArticle",
+                "@id": "https://example.com/related",
+                dateModified: "2026-09-02"
+              },
+              article
+            ]
+          })}</script>`,
+          "https://example.com/article"
+        )
+      ).toBe("2026-09-01");
+    }
+  });
 });

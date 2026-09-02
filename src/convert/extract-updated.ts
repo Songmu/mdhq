@@ -184,9 +184,10 @@ function jsonLdDates(
         ...referenceUrls(object.url, pageUrl)
       ];
       const primary =
-        directlyMatchesPage(object["@id"], page, pageUrl) ||
+        identifiesPageDocument(object["@id"], page, pageUrl) ||
         directlyMatchesPage(object.url, page, pageUrl) ||
         primaryEntityObjects.has(object) ||
+        identifiesPageDocument(object.mainEntityOfPage, page, pageUrl) ||
         intersects(referenceUrls(object.mainEntityOfPage, pageUrl), pageEntityIds) ||
         intersects(identifiers, primaryEntityIds);
       return [

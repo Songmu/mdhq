@@ -145,8 +145,8 @@ are absent from a 200 response are removed.
 
 Responses with a non-empty `Vary` header store the normalized header names in
 `vary` but do not store ETag or Last-Modified validators. Response header
-values and request credentials are never persisted. Responses without `Vary`
-store `vary: []` when a validator is available.
+values named by `Vary` and request credentials are never persisted. Responses
+without `Vary` store `vary: []` when a validator is available.
 
 Requests containing caller-supplied `Authorization` or `Cookie` headers never
 reuse or persist HTTP validators, even when the response omits `Vary`. This
