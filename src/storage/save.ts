@@ -27,9 +27,9 @@ export interface ExistingDocument {
   markdown: string;
   contentDigest: string;
   created?: string;
+  modified?: string;
   etag?: string;
   lastModified?: string;
-  vary?: string[];
 }
 
 export async function readExistingDocument(filePath: string): Promise<ExistingDocument | undefined> {
@@ -58,13 +58,12 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
     markdown: parsed.markdown,
     contentDigest: markdownContentDigest(parsed.markdown),
     ...(typeof frontmatter.created === "string" ? { created: frontmatter.created } : {}),
+    ...(typeof frontmatter.modified === "string"
+      ? { modified: frontmatter.modified }
+      : {}),
     ...(typeof frontmatter.etag === "string" ? { etag: frontmatter.etag } : {}),
     ...(typeof frontmatter.last_modified === "string"
       ? { lastModified: frontmatter.last_modified }
-      : {}),
-    ...(Array.isArray(frontmatter.vary) &&
-    frontmatter.vary.every((value): value is string => typeof value === "string")
-      ? { vary: frontmatter.vary }
       : {})
   };
 }
@@ -134,6 +133,9 @@ export async function saveDocument(
             options.path
           );
           if (!options.update) {
+            return "skipped";
+          }
+          if (existing.content === options.content) {
             return "skipped";
           }
         }

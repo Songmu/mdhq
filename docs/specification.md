@@ -127,7 +127,7 @@ Defaults:
 
 With `update`, mdhq uses validators from a recognized existing destination:
 
-1. Confirm that `vary: []` records a prior response without a `Vary` header.
+1. Confirm that the request does not include `Authorization` or `Cookie`.
 2. Confirm that the stored `source` is the same HTTP target as the requested
    URL, comparing scheme, authority, path, and query while ignoring fragments.
 3. Send `If-None-Match` when frontmatter contains `etag`.
@@ -137,9 +137,7 @@ With `update`, mdhq uses validators from a recognized existing destination:
 
 Storage identity is intentionally broader than HTTP validator scope. A
 same-identity URL with a different scheme, query, or path alias is fetched
-without stored validators. Legacy documents with validators but no `vary`
-field are also fetched unconditionally once before becoming eligible for
-revalidation.
+without stored validators.
 
 Automatic validators are sent only on the first request and are not forwarded
 after redirects. When a stored validator is available, it replaces any
@@ -148,14 +146,15 @@ caller-provided `If-None-Match` or `If-Modified-Since` value so that an HTTP
 validator is an error.
 
 An HTTP 304 response preserves the existing Markdown body, skips conversion
-and asset downloads, updates `modified`, and returns `unchanged`. A 200
+and asset downloads, preserves `modified`, and returns `unchanged`. A 200
 response replaces stored validators with the response values; validators that
-are absent from a 200 response are removed.
+are absent from a 200 response are removed without changing `modified` when
+the normalized Markdown body and user-facing frontmatter are unchanged.
 
-Responses with a non-empty `Vary` header store the normalized header names in
-`vary` but do not store ETag or Last-Modified validators. Response header
-values named by `Vary` and request credentials are never persisted. Responses
-without `Vary` store `vary: []` when a validator is available.
+Responses with a non-empty `Vary` header do not persist ETag or Last-Modified
+validators, and mdhq never stores `Vary` header names or values in Markdown.
+Responses without `Vary` may store a reusable `etag` or `last_modified`
+validator.
 
 Requests containing caller-supplied `Authorization` or `Cookie` headers never
 reuse or persist HTTP validators, even when the response omits `Vary`. This
@@ -560,17 +559,16 @@ mdhq-controlled fields:
 - `source`: final page URL
 - `requested_url`: original URL, only when different from `source`
 - `created`: initial local acquisition time
-- `modified`: latest successful acquisition or HTTP revalidation time
-- `content_digest`: SHA-256 digest of the normalized Markdown body
+- `modified`: time of the latest meaningful Markdown note change
 - `etag`: HTTP ETag stored verbatim, when supplied
 - `last_modified`: HTTP Last-Modified converted to RFC 3339 UTC, when valid
-- `vary`: normalized response `Vary` header names, or an empty list certifying
-  that stored validators came from a response without `Vary`
 
 `created` and `modified` are both written on initial acquisition and use
 local-offset RFC 3339 timestamps with second-level precision. A valid existing
 `created` string is preserved verbatim during an update, including its
-original UTC offset.
+original UTC offset. `modified` changes only when the normalized Markdown body
+or user-facing frontmatter changes; HTTP 304 responses and validator-only
+updates preserve it.
 
 `published` and `updated` are source-article metadata. Instants are normalized
 to RFC 3339 with second precision; genuinely date-only values remain
@@ -582,16 +580,18 @@ ahead of generic WebPage and CreativeWork fallbacks, independently of graph
 order.
 
 The Markdown body uses LF line endings, has trailing whitespace removed, and
-ends with exactly one LF. `content_digest` is calculated from the UTF-8 bytes
-of that normalized body only. Frontmatter, delimiters, and the blank line
-between frontmatter and body are excluded.
+ends with exactly one LF. mdhq internally calculates a SHA-256 digest from the
+UTF-8 bytes of that normalized body for comparison, concurrency, and status
+logic. Frontmatter, delimiters, and the blank line between frontmatter and
+body are excluded, and the digest is not stored in frontmatter.
 
 Configured exclusions and values are applied before mdhq-controlled fields.
 Consequently `source`, `requested_url`, `created`, `modified`,
-`content_digest`, `etag`, `last_modified`, and `vary` cannot be removed or overridden
-by frontmatter configuration. Other fields, including extracted metadata,
-`image`, and `type`, can be excluded or replaced. mdhq does not emit `type` by
-default; it can be added with `frontmatter.values`.
+`content_digest`, `etag`, `last_modified`, and `vary` cannot be overridden by
+frontmatter configuration. `content_digest` and `vary` are always removed from
+serialized frontmatter. Other fields, including extracted metadata, `image`,
+and `type`, can be excluded or replaced. mdhq does not emit `type` by default;
+it can be added with `frontmatter.values`.
 
 ## Existing files and concurrent writes
 
@@ -621,9 +621,11 @@ With `update`:
 - a conflicting same-identity write restarts the complete update from the
   latest snapshot, with at most two restarts
 - a different-identity destination returns `PATH_COLLISION`
-- an HTTP 304 or a 200 response with an unchanged normalized Markdown body
+- an HTTP 304 or a 200 response with unchanged normalized Markdown body and
+  user-facing frontmatter
   returns `unchanged`
-- a 200 response with a changed normalized Markdown body returns `updated`
+- a 200 response with a changed normalized Markdown body or user-facing
+  frontmatter returns `updated`
 - temporary files are removed after success or failure
 
 Lock directories are removed when the write completes. Stale locks left by a
