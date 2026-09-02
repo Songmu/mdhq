@@ -325,6 +325,85 @@ describe("localizeAssets", () => {
     }
   });
 
+  it("does not cache a response with Cache-Control no-store", async () => {
+    const receivedEtags: Array<string | undefined> = [];
+    const noStoreServer = createServer((request, response) => {
+      receivedEtags.push(request.headers["if-none-match"]);
+      response
+        .writeHead(200, {
+          "cache-control": "private, no-store",
+          "content-type": "image/png",
+          etag: '"not-stored"'
+        })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      noStoreServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = noStoreServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const options = {
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl: sourceUrl,
+      warn: () => undefined
+    };
+    try {
+      await localizeAssets(options);
+      await localizeAssets(options);
+      expect(receivedEtags).toEqual([undefined, undefined]);
+    } finally {
+      await new Promise<void>((resolve) =>
+        noStoreServer.close(() => resolve())
+      );
+    }
+  });
+
+  it("localizes an image when its cache path is a directory", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const sourceUrl = `${baseUrl}/image.png`;
+    const cacheKey = createHash("sha256").update(sourceUrl).digest("hex");
+    const cachePath = path.join(root, "_assets", ".cache", `${cacheKey}.json`);
+    await mkdir(cachePath, { recursive: true });
+    const warnings: string[] = [];
+    const result = await localizeAssets({
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl,
+      warn: (warning) => warnings.push(warning.code)
+    });
+    expect(result.assets[0]?.status).toBe("saved");
+    expect(warnings).toEqual(["ASSET_CACHE_INVALID"]);
+  });
+
+  it("preserves an invalid-cache warning when image fetching also fails", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const sourceUrl = `${baseUrl}/bad.png`;
+    const cacheKey = createHash("sha256").update(sourceUrl).digest("hex");
+    const cachePath = path.join(root, "_assets", ".cache", `${cacheKey}.json`);
+    await mkdir(path.dirname(cachePath), { recursive: true });
+    await writeFile(cachePath, "{");
+    const warnings: string[] = [];
+    const result = await localizeAssets({
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl,
+      warn: (warning) => warnings.push(warning.code)
+    });
+    expect(result.assets[0]?.status).toBe("failed");
+    expect(warnings).toEqual([
+      "ASSET_CACHE_INVALID",
+      "ASSET_FETCH_FAILED"
+    ]);
+  });
+
   it("accepts a jpeg URL when Content-Type is missing", async () => {
     const jpegServer = createServer((_request, response) => {
       response.writeHead(200).end(Buffer.from([0xff, 0xd8, 0xff]));

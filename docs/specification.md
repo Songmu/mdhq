@@ -506,9 +506,12 @@ unchanged bytes reuse the existing one.
 
 Asset validators are retained only when the response has no `Vary` fields, the
 request has no Authorization or Cookie header, and the request did not
-redirect. Caller-supplied conditional headers are not forwarded as asset
-validators. Invalid cache metadata is reported as an `ASSET_CACHE_INVALID`
-warning and replaced after a successful cacheable response.
+redirect. Requests or responses with `Cache-Control: no-store` are not cached.
+Caller-supplied conditional headers are not forwarded as asset validators.
+Invalid cache metadata is reported as an `ASSET_CACHE_INVALID` warning. A
+malformed regular cache file is replaced after a successful cacheable
+response; an invalid non-file entry disables caching for that URL without
+preventing the image from being localized.
 
 When an article update receives `304 Not Modified`, asset localization is
 skipped together with HTML conversion. Images are revalidated when the article

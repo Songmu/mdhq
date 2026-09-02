@@ -33,6 +33,7 @@ export interface FetchedResource {
   etag?: string;
   lastModified?: string;
   vary?: string;
+  cacheControl?: string;
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
@@ -169,6 +170,7 @@ export async function fetchResource(
     const etag = response.headers.get("etag")?.trim() || undefined;
     const lastModified = response.headers.get("last-modified")?.trim() || undefined;
     const vary = response.headers.get("vary")?.trim() || undefined;
+    const cacheControl = response.headers.get("cache-control")?.trim() || undefined;
     if (response.status === 304 && options.allowNotModified && redirects === 0) {
       await response.body?.cancel().catch(() => undefined);
       return {
@@ -180,7 +182,8 @@ export async function fetchResource(
         notModified: true,
         ...(etag ? { etag } : {}),
         ...(lastModified ? { lastModified } : {}),
-        ...(vary ? { vary } : {})
+        ...(vary ? { vary } : {}),
+        ...(cacheControl ? { cacheControl } : {})
       };
     }
     if (!response.ok) {
@@ -215,7 +218,8 @@ export async function fetchResource(
       notModified: false,
       ...(etag ? { etag } : {}),
       ...(lastModified ? { lastModified } : {}),
-      ...(vary ? { vary } : {})
+      ...(vary ? { vary } : {}),
+      ...(cacheControl ? { cacheControl } : {})
     };
   }
 }

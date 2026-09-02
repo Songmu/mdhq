@@ -34,6 +34,12 @@ interface AssetCacheEntry {
   vary: string[];
 }
 
+interface AssetCacheRead {
+  entry?: AssetCacheEntry;
+  warning?: MdhqWarning;
+  writable: boolean;
+}
+
 function assetExtension(contentType: string, finalUrl: string): string {
   const fromType = CONTENT_TYPE_EXTENSIONS[contentType];
   if (fromType) {
@@ -83,6 +89,22 @@ function hasCredentialHeaders(
   });
 }
 
+function hasNoStore(value: string | undefined): boolean {
+  return (value ?? "")
+    .split(",")
+    .some((directive) => directive.trim().toLowerCase().split("=", 1)[0] === "no-store");
+}
+
+function requestHasNoStore(
+  headers: readonly { name: string; value: string }[] | undefined
+): boolean {
+  return (headers ?? []).some(
+    (header) =>
+      header.name.toLowerCase() === "cache-control" &&
+      hasNoStore(header.value)
+  );
+}
+
 function parseAssetCacheEntry(value: unknown): AssetCacheEntry | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
@@ -119,11 +141,12 @@ function parseAssetCacheEntry(value: unknown): AssetCacheEntry | undefined {
 async function readAssetCache(
   cachePath: string,
   sourceUrl: string
-): Promise<{ entry?: AssetCacheEntry; warning?: MdhqWarning }> {
+): Promise<AssetCacheRead> {
   try {
     const metadata = await lstat(cachePath);
     if (!metadata.isFile() || metadata.isSymbolicLink()) {
       return {
+        writable: false,
         warning: {
           code: "ASSET_CACHE_INVALID",
           message: `Invalid asset cache metadata: ${cachePath}`,
@@ -133,7 +156,7 @@ async function readAssetCache(
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {};
+      return { writable: true };
     }
     throw error;
   }
@@ -141,12 +164,13 @@ async function readAssetCache(
   try {
     const entry = parseAssetCacheEntry(JSON.parse(content));
     if (entry?.sourceUrl === sourceUrl) {
-      return { entry };
+      return { entry, writable: true };
     }
   } catch {
     // Report malformed cache metadata and recover with an unconditional fetch.
   }
   return {
+    writable: true,
     warning: {
       code: "ASSET_CACHE_INVALID",
       message: `Invalid asset cache metadata: ${cachePath}`,
@@ -217,6 +241,7 @@ async function processAsset(
   options: LocalizeAssetsOptions,
   representativeImage: string | undefined
 ): Promise<ProcessedAsset> {
+  let cacheWarning: MdhqWarning | undefined;
   try {
     const sameOrigin = new URL(sourceUrl).origin === new URL(options.baseUrl).origin;
     const http = {
@@ -228,6 +253,7 @@ async function processAsset(
       cachePath,
       async () => {
         const cached = await readAssetCache(cachePath, sourceUrl);
+        cacheWarning = cached.warning;
         const cachedAsset = cached.entry
           ? await existingCachedAsset(cached.entry, options.root)
           : undefined;
@@ -236,7 +262,8 @@ async function processAsset(
           cachedAsset !== undefined &&
           cached.entry.finalUrl === sourceUrl &&
           cached.entry.vary.length === 0 &&
-          !hasCredentialHeaders(http.headers);
+          !hasCredentialHeaders(http.headers) &&
+          !requestHasNoStore(http.headers);
         const conditional = validatorsReusable
           ? cached.entry?.etag
             ? { etag: cached.entry.etag }
@@ -254,7 +281,7 @@ async function processAsset(
             throw new Error(`HTTP 304 without a matching cached asset: ${sourceUrl}`);
           }
           const vary = response.vary ? varyNames(response.vary) : cached.entry.vary;
-          if (vary.length === 0) {
+          if (vary.length === 0 && !hasNoStore(response.cacheControl)) {
             const refreshed: AssetCacheEntry = {
               ...cached.entry,
               ...(response.etag ? { etag: response.etag } : {}),
@@ -266,7 +293,7 @@ async function processAsset(
             await replaceFileAtomic(cachePath, serializeAssetCache(refreshed), {
               root: options.root
             });
-          } else {
+          } else if (cached.writable) {
             await removeAssetCache(cachePath);
           }
           const replacement = path
@@ -282,7 +309,7 @@ async function processAsset(
             },
             replacement,
             representative: sourceUrl === representativeImage,
-            ...(cached.warning ? { warnings: [cached.warning] } : {})
+            ...(cacheWarning ? { warnings: [cacheWarning] } : {})
           };
         }
 
@@ -302,8 +329,10 @@ async function processAsset(
           response.finalUrl === sourceUrl &&
           vary.length === 0 &&
           !hasCredentialHeaders(http.headers) &&
+          !requestHasNoStore(http.headers) &&
+          !hasNoStore(response.cacheControl) &&
           Boolean(response.etag || response.lastModified);
-        if (cacheable) {
+        if (cacheable && cached.writable) {
           const entry: AssetCacheEntry = {
             version: ASSET_CACHE_VERSION,
             sourceUrl,
@@ -319,7 +348,11 @@ async function processAsset(
           await replaceFileAtomic(cachePath, serializeAssetCache(entry), {
             root: options.root
           });
-        } else if (!hasCredentialHeaders(http.headers)) {
+        } else if (
+          cached.writable &&
+          !hasCredentialHeaders(http.headers) &&
+          !requestHasNoStore(http.headers)
+        ) {
           await removeAssetCache(cachePath);
         }
         const replacement = path
@@ -335,7 +368,7 @@ async function processAsset(
           },
           replacement,
           representative: sourceUrl === representativeImage,
-          ...(cached.warning ? { warnings: [cached.warning] } : {})
+          ...(cacheWarning ? { warnings: [cacheWarning] } : {})
         };
       },
       options.root
@@ -345,7 +378,10 @@ async function processAsset(
     return {
       asset: { sourceUrl, status: "failed", error: message },
       representative: sourceUrl === representativeImage,
-      warnings: [{ code: "ASSET_FETCH_FAILED", message, url: sourceUrl }]
+      warnings: [
+        ...(cacheWarning ? [cacheWarning] : []),
+        { code: "ASSET_FETCH_FAILED", message, url: sourceUrl }
+      ]
     };
   }
 }
