@@ -111,6 +111,10 @@ describe("normalizeSourceDate", () => {
     expect(normalizeSourceDate(nanoseconds)).toBe("2023-09-02T16:34:56Z");
   });
 
+  it("uses floor division for negative fractional epochs", () => {
+    expect(normalizeSourceDate("-1000000000000001")).toBe("1969-12-20T10:13:19Z");
+  });
+
   it("rejects numeric values with too few or too many digits to plausibly be an epoch", () => {
     expect(normalizeSourceDate(2026)).toBeUndefined();
     expect(normalizeSourceDate("42")).toBeUndefined();

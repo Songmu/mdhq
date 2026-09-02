@@ -35,6 +35,14 @@ describe("extractPublishedDate", () => {
     ).toBe("2023-09-02T16:34:56Z");
   });
 
+  it("preserves large numeric JSON-LD epoch tokens", () => {
+    expect(
+      extractPublishedDate(
+        '<script type="application/ld+json">{"@type":"Article","datePublished":1693672496789123455}</script>'
+      )
+    ).toBe("2023-09-02T16:34:56Z");
+  });
+
   it("accepts a JSON-LD @value object for datePublished", () => {
     expect(
       extractPublishedDate(

@@ -328,12 +328,17 @@ function epochToMilliseconds(value: bigint): bigint | undefined {
     return value;
   }
   if (digits <= 16) {
-    return value / 1000n;
+    return floorDivide(value, 1000n);
   }
   if (digits <= 19) {
-    return value / 1_000_000n;
+    return floorDivide(value, 1_000_000n);
   }
   return undefined;
+}
+
+function floorDivide(value: bigint, divisor: bigint): bigint {
+  const quotient = value / divisor;
+  return value < 0n && value % divisor !== 0n ? quotient - 1n : quotient;
 }
 
 function formatEpochMilliseconds(ms: bigint): string | undefined {

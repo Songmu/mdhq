@@ -1,6 +1,8 @@
 import { parseHTML } from "linkedom";
 import { normalizeSourceDate } from "../date.js";
 
+export type ArticleDocument = ReturnType<typeof parseHTML>["document"];
+
 const ARTICLE_LIKE_TYPES = new Set([
   "CreativeWork",
   "APIReference",
@@ -220,6 +222,66 @@ function attributeValue(
   return undefined;
 }
 
+export function extractArticleDateFromDocument(
+  document: ArticleDocument,
+  options: ArticleDateOptions,
+  pageUrl?: string
+): string | undefined {
+  const objects: Record<string, unknown>[] = [];
+  for (const script of document.querySelectorAll("script[type]")) {
+    const mediaType =
+      script.getAttribute("type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    if (mediaType !== "application/ld+json") {
+      continue;
+    }
+    try {
+      collectJsonLdObjects(parseJsonLd(script.textContent ?? ""), objects);
+    } catch {
+      // Ignore malformed blocks and continue with other metadata sources.
+    }
+  }
+  const metaCandidates = options.metaProperties.map((property) =>
+    attributeValue(document.querySelector(`meta[property="${property}"]`), ["content"])
+  );
+  const microdataCandidates = options.itemprops.map((itemprop) =>
+    attributeValue(document.querySelector(`[itemprop~="${itemprop}"]`), ["datetime", "content"])
+  );
+  for (const candidate of [
+    ...jsonLdDates(objects, pageUrl, options.schemaProperty),
+    ...metaCandidates,
+    ...microdataCandidates
+  ]) {
+    const normalized = normalizeSourceDate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function parseJsonLd(source: string): unknown {
+  let result = "";
+  let inString = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"' && source[index - 1] !== "\\") {
+      inString = !inString;
+      result += character;
+      continue;
+    }
+    if (!inString && (character === "-" || /\d/u.test(character))) {
+      const match = source.slice(index).match(/^-?\d+(?![\d.eE])/u);
+      if (match) {
+        result += `"${match[0]}"`;
+        index += match[0].length - 1;
+        continue;
+      }
+    }
+    result += character;
+  }
+  return JSON.parse(result);
+}
+
 export interface ArticleDateOptions {
   /** Schema.org JSON-LD property name, e.g. "datePublished" or "dateModified". */
   schemaProperty: string;
@@ -243,34 +305,5 @@ export function extractArticleDate(
   pageUrl?: string
 ): string | undefined {
   const { document } = parseHTML(html);
-  const objects: Record<string, unknown>[] = [];
-  for (const script of document.querySelectorAll("script[type]")) {
-    const mediaType =
-      script.getAttribute("type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-    if (mediaType !== "application/ld+json") {
-      continue;
-    }
-    try {
-      collectJsonLdObjects(JSON.parse(script.textContent ?? ""), objects);
-    } catch {
-      // Ignore malformed blocks and continue with other metadata sources.
-    }
-  }
-  const metaCandidates = options.metaProperties.map((property) =>
-    attributeValue(document.querySelector(`meta[property="${property}"]`), ["content"])
-  );
-  const microdataCandidates = options.itemprops.map((itemprop) =>
-    attributeValue(document.querySelector(`[itemprop~="${itemprop}"]`), ["datetime", "content"])
-  );
-  for (const candidate of [
-    ...jsonLdDates(objects, pageUrl, options.schemaProperty),
-    ...metaCandidates,
-    ...microdataCandidates
-  ]) {
-    const normalized = normalizeSourceDate(candidate);
-    if (normalized) {
-      return normalized;
-    }
-  }
-  return undefined;
+  return extractArticleDateFromDocument(document, options, pageUrl);
 }

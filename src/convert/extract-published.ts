@@ -1,4 +1,8 @@
-import { extractArticleDate } from "./article-date.js";
+import {
+  extractArticleDate,
+  extractArticleDateFromDocument,
+  type ArticleDocument
+} from "./article-date.js";
 
 /**
  * Extracts and normalizes the article publication ("published") date from
@@ -22,4 +26,12 @@ export function extractPublishedDate(
     },
     pageUrl
   );
+}
+
+export function extractPublishedDateFromDocument(document: ArticleDocument, pageUrl?: string) {
+  return extractArticleDateFromDocument(document, {
+    schemaProperty: "datePublished",
+    metaProperties: ["article:published_time", "og:published_time"],
+    itemprops: ["datePublished"]
+  }, pageUrl);
 }

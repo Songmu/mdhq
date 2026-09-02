@@ -1,4 +1,8 @@
-import { extractArticleDate } from "./article-date.js";
+import {
+  extractArticleDate,
+  extractArticleDateFromDocument,
+  type ArticleDocument
+} from "./article-date.js";
 
 /**
  * Extracts and normalizes the article modification ("updated") date from
@@ -18,4 +22,12 @@ export function extractUpdatedDate(
     },
     pageUrl
   );
+}
+
+export function extractUpdatedDateFromDocument(document: ArticleDocument, pageUrl?: string) {
+  return extractArticleDateFromDocument(document, {
+    schemaProperty: "dateModified",
+    metaProperties: ["article:modified_time", "og:updated_time"],
+    itemprops: ["dateModified"]
+  }, pageUrl);
 }
