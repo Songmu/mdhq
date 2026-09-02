@@ -32,6 +32,7 @@ export interface FetchedResource {
   notModified: boolean;
   etag?: string;
   lastModified?: string;
+  vary?: string;
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
@@ -167,6 +168,7 @@ export async function fetchResource(
     }
     const etag = response.headers.get("etag")?.trim() || undefined;
     const lastModified = response.headers.get("last-modified")?.trim() || undefined;
+    const vary = response.headers.get("vary")?.trim() || undefined;
     if (response.status === 304 && options.allowNotModified && redirects === 0) {
       await response.body?.cancel().catch(() => undefined);
       return {
@@ -177,7 +179,8 @@ export async function fetchResource(
         customHeadersAllowed,
         notModified: true,
         ...(etag ? { etag } : {}),
-        ...(lastModified ? { lastModified } : {})
+        ...(lastModified ? { lastModified } : {}),
+        ...(vary ? { vary } : {})
       };
     }
     if (!response.ok) {
@@ -211,7 +214,8 @@ export async function fetchResource(
       customHeadersAllowed,
       notModified: false,
       ...(etag ? { etag } : {}),
-      ...(lastModified ? { lastModified } : {})
+      ...(lastModified ? { lastModified } : {}),
+      ...(vary ? { vary } : {})
     };
   }
 }
@@ -223,6 +227,7 @@ export type FetchedHtml =
       customHeadersAllowed: boolean;
       etag?: string;
       lastModified?: string;
+      vary?: string;
     }
   | {
       notModified: false;
@@ -231,6 +236,7 @@ export type FetchedHtml =
       customHeadersAllowed: boolean;
       etag?: string;
       lastModified?: string;
+      vary?: string;
     };
 
 export async function fetchHtml(
@@ -248,7 +254,8 @@ export async function fetchHtml(
       finalUrl: resource.finalUrl,
       customHeadersAllowed: resource.customHeadersAllowed,
       ...(resource.etag ? { etag: resource.etag } : {}),
-      ...(resource.lastModified ? { lastModified: resource.lastModified } : {})
+      ...(resource.lastModified ? { lastModified: resource.lastModified } : {}),
+      ...(resource.vary ? { vary: resource.vary } : {})
     };
   }
   return {
@@ -257,6 +264,7 @@ export async function fetchHtml(
     finalUrl: resource.finalUrl,
     customHeadersAllowed: resource.customHeadersAllowed,
     ...(resource.etag ? { etag: resource.etag } : {}),
-    ...(resource.lastModified ? { lastModified: resource.lastModified } : {})
+    ...(resource.lastModified ? { lastModified: resource.lastModified } : {}),
+    ...(resource.vary ? { vary: resource.vary } : {})
   };
 }

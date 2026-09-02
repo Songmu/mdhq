@@ -181,6 +181,7 @@ Protected fields are:
 - `content_digest`
 - `etag`
 - `last_modified`
+- `vary`
 
 mdhq does not add a `type` property by default. Add one explicitly when
 desired:

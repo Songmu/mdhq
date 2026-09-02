@@ -21,6 +21,15 @@ describe("fetchHtml", () => {
         response.writeHead(200, { "content-type": "application/json" }).end("{}");
         return;
       }
+      if (request.url === "/vary") {
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            vary: "Authorization, Cookie"
+          })
+          .end("<html></html>");
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(`<html><body>${request.headers["x-test"] ?? ""}</body></html>`);
@@ -128,6 +137,11 @@ describe("fetchHtml", () => {
     await expect(fetchHtml(`${baseUrl}/json`)).rejects.toMatchObject({
       code: "UNSUPPORTED_CONTENT_TYPE"
     });
+  });
+
+  it("captures the Vary response header", async () => {
+    const result = await fetchHtml(`${baseUrl}/vary`);
+    expect(result.vary).toBe("Authorization, Cookie");
   });
 
   it("enforces the response size limit", async () => {

@@ -13,6 +13,7 @@ export interface FrontmatterOptions {
   contentDigest: string;
   etag?: string;
   lastModified?: string;
+  vary?: string[];
   image?: string;
   imageSource?: string;
   config?: MdhqConfig["frontmatter"];
@@ -27,6 +28,7 @@ interface ControlledFrontmatterOptions {
   contentDigest: string;
   etag?: string;
   lastModified?: string;
+  vary?: string[];
   config?: MdhqConfig["frontmatter"];
 }
 
@@ -60,6 +62,11 @@ function applyControlledFields(options: ControlledFrontmatterOptions): Record<st
     fields.last_modified = options.lastModified;
   } else {
     delete fields.last_modified;
+  }
+  if (options.vary) {
+    fields.vary = options.vary;
+  } else {
+    delete fields.vary;
   }
   return fields;
 }

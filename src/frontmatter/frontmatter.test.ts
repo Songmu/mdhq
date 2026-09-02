@@ -15,14 +15,16 @@ describe("frontmatter", () => {
       requestedUrl: "https://example.com/start",
       created: new Date("2026-08-31T12:34:56+09:00"),
       modified: new Date("2026-08-31T12:34:56+09:00"),
-      contentDigest: "sha256:test"
+      contentDigest: "sha256:test",
+      vary: []
     });
     expect(fields).toMatchObject({
       title: "Example",
       word_count: 42,
       source: "https://example.com/final",
       requested_url: "https://example.com/start",
-      content_digest: "sha256:test"
+      content_digest: "sha256:test",
+      vary: []
     });
     expect(fields.created).toMatch(/^2026-08-31T/);
     expect(fields.modified).toMatch(/^2026-08-31T/);
@@ -75,8 +77,12 @@ describe("frontmatter", () => {
     expect(
       buildFrontmatter({
         ...common,
-        config: { values: { type: "clip" } }
+        vary: [],
+        config: {
+          exclude: ["vary"],
+          values: { type: "clip", vary: "caller-value" }
+        }
       })
-    ).toHaveProperty("type", "clip");
+    ).toMatchObject({ type: "clip", vary: [] });
   });
 });

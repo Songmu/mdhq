@@ -29,6 +29,7 @@ export interface ExistingDocument {
   created?: string;
   etag?: string;
   lastModified?: string;
+  vary?: string[];
 }
 
 export async function readExistingDocument(filePath: string): Promise<ExistingDocument | undefined> {
@@ -60,6 +61,10 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
     ...(typeof frontmatter.etag === "string" ? { etag: frontmatter.etag } : {}),
     ...(typeof frontmatter.last_modified === "string"
       ? { lastModified: frontmatter.last_modified }
+      : {}),
+    ...(Array.isArray(frontmatter.vary) &&
+    frontmatter.vary.every((value): value is string => typeof value === "string")
+      ? { vary: frontmatter.vary }
       : {})
   };
 }

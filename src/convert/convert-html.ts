@@ -18,7 +18,9 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
     });
   }
   try {
-    const updated = normalizeSourceDate(extractUpdatedDate(options.html));
+    const updated = normalizeSourceDate(
+      extractUpdatedDate(options.html, url.href)
+    );
     const result = await Defuddle(options.html, url.href, {
       ...options.defuddle,
       markdown: true,

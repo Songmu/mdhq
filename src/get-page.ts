@@ -34,6 +34,26 @@ interface GetPageContext {
   root: string;
 }
 
+function varyNames(value: string | undefined): string[] {
+  return [
+    ...new Set(
+      (value ?? "")
+        .split(",")
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function hasCredentialHeaders(
+  headers: readonly { name: string }[] | undefined
+): boolean {
+  return (headers ?? []).some((header) => {
+    const name = header.name.toLowerCase();
+    return name === "authorization" || name === "cookie";
+  });
+}
+
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   const requestedUrl = parseHttpUrl(options.url).href;
   const loaded = await loadConfig(options.configPath);
@@ -105,6 +125,8 @@ async function getPageAttempt(
   if (
     options.update &&
     requestedExisting &&
+    requestedExisting.vary?.length === 0 &&
+    !hasCredentialHeaders(headers) &&
     sameHttpTarget(requestedExisting.sourceUrl, fetchUrl)
   ) {
     if (requestedExisting.etag) {
@@ -138,7 +160,7 @@ async function getPageAttempt(
         message: `Invalid Last-Modified response header: ${value}`,
         url: fetched.finalUrl
       });
-      return validFallback;
+      return undefined;
     }
     return normalized;
   };
@@ -153,7 +175,13 @@ async function getPageAttempt(
       fetched.lastModified,
       requestedExisting.lastModified
     );
-    const etag = fetched.etag ?? requestedExisting.etag;
+    const vary = varyNames(fetched.vary);
+    const validatorsReusable =
+      vary.length === 0 && !hasCredentialHeaders(headers);
+    const etag = validatorsReusable
+      ? fetched.etag ?? requestedExisting.etag
+      : undefined;
+    const reusableLastModified = validatorsReusable ? lastModified : undefined;
     const frontmatter = refreshFrontmatter(requestedExisting.frontmatter, {
       sourceUrl: requestedExisting.sourceUrl,
       requestedUrl,
@@ -164,7 +192,14 @@ async function getPageAttempt(
       modified: now,
       contentDigest: requestedExisting.contentDigest,
       ...(etag ? { etag } : {}),
-      ...(lastModified ? { lastModified } : {}),
+      ...(reusableLastModified
+        ? { lastModified: reusableLastModified }
+        : {}),
+      ...(vary.length > 0
+        ? { vary }
+        : etag || reusableLastModified
+          ? { vary: [] }
+          : {}),
       ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
     });
     const content = serializeDocument(frontmatter, requestedExisting.markdown);
@@ -249,6 +284,8 @@ async function getPageAttempt(
 
   const expectedExisting =
     markdownPath === requestedPath ? requestedExisting : existing;
+  const responseCredentialed =
+    responseHeadersAllowed && hasCredentialHeaders(http.headers);
   const converted = await convertHtml({
     html: fetched.html,
     url: finalUrl,
@@ -307,6 +344,10 @@ async function getPageAttempt(
       : now;
   const contentDigest = markdownContentDigest(localized.markdown);
   const lastModified = normalizeLastModified(fetched.lastModified);
+  const vary = varyNames(fetched.vary);
+  const validatorsReusable = vary.length === 0 && !responseCredentialed;
+  const etag = validatorsReusable ? fetched.etag : undefined;
+  const reusableLastModified = validatorsReusable ? lastModified : undefined;
   const frontmatter = buildFrontmatter({
     metadata,
     sourceUrl: finalUrl.href,
@@ -314,8 +355,13 @@ async function getPageAttempt(
     created,
     modified: now,
     contentDigest,
-    ...(fetched.etag ? { etag: fetched.etag } : {}),
-    ...(lastModified ? { lastModified } : {}),
+    ...(etag ? { etag } : {}),
+    ...(reusableLastModified ? { lastModified: reusableLastModified } : {}),
+    ...(vary.length > 0
+      ? { vary }
+      : etag || reusableLastModified
+        ? { vary: [] }
+        : {}),
     ...(localized.representativeImage
       ? { image: localized.representativeImage }
       : {}),

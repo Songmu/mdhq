@@ -180,7 +180,8 @@ Status meanings:
 - `skipped`: an existing same-identity document was found without `update`.
 
 With `update`, `getPage` sends the stored `etag` as `If-None-Match`, or falls
-back to the stored `last_modified` as `If-Modified-Since`. These validators,
+back to the stored `last_modified` as `If-Modified-Since`, only when `vary: []`
+certifies that the stored response had no `Vary` header. These validators,
 along with `created`, `modified`, and `content_digest`, are stored in the
 Markdown frontmatter.
 
@@ -199,11 +200,12 @@ interface AssetResult {
 - `sourceUrl` is the absolute pre-fetch asset URL discovered in Markdown or
   representative-image metadata.
 - `path` is the absolute local asset path.
-- `saved` means a new asset file was created or differing existing content
-  was atomically replaced.
-- `reused` means the deterministic asset path already existed.
+- `saved` means a new immutable content-addressed asset file was created.
+- `reused` means the deterministic asset path already existed with identical
+  bytes.
 - `failed` means the Markdown operation continued without localizing that
-  asset.
+  asset, including the unlikely case of differing bytes at the same digest
+  and extension path.
 - `finalUrl` and `path` are present for successful asset operations.
 - `error` is present for failed operations.
 

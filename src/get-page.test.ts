@@ -19,6 +19,7 @@ describe("getPage", () => {
   let changingBody: string;
   let includeChangingEtag: boolean;
   let pageUnavailable: boolean;
+  let invalidLastModifiedOn304: boolean;
   let removeBeforeNotModified: string | undefined;
   let replaceBeforeNotModified:
     | { path: string; content: string; responseBody: string }
@@ -36,6 +37,7 @@ describe("getPage", () => {
     changingBody = "First version";
     includeChangingEtag = false;
     pageUnavailable = false;
+    invalidLastModifiedOn304 = false;
     removeBeforeNotModified = undefined;
     replaceBeforeNotModified = undefined;
     replaceBeforeChangingResponse = undefined;
@@ -95,7 +97,13 @@ describe("getPage", () => {
       if (request.url === "/conditional-last-modified") {
         const lastModified = "Mon, 31 Aug 2026 03:00:00 GMT";
         if (request.headers["if-modified-since"] === lastModified) {
-          response.writeHead(304, { "last-modified": lastModified }).end();
+          response
+            .writeHead(304, {
+              "last-modified": invalidLastModifiedOn304
+                ? "invalid-date"
+                : lastModified
+            })
+            .end();
           return;
         }
         response
@@ -105,6 +113,50 @@ describe("getPage", () => {
           })
           .end(
             "<html><head><title>Conditional</title></head><body><article><p>Stable content for Last-Modified.</p></article></body></html>"
+          );
+        return;
+      }
+      if (request.url === "/vary-authorization") {
+        const lastModified = "Tue, 01 Sep 2026 00:00:00 GMT";
+        if (request.headers["if-modified-since"] === lastModified) {
+          response
+            .writeHead(304, {
+              "last-modified": lastModified,
+              vary: "Authorization"
+            })
+            .end();
+          return;
+        }
+        const authenticated = request.headers.authorization !== undefined;
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            "last-modified": lastModified,
+            vary: "Authorization"
+          })
+          .end(
+            `<html><head><title>Account</title></head><body><article><p>${
+              authenticated ? "Private account article." : "Public account article."
+            }</p></article></body></html>`
+          );
+        return;
+      }
+      if (request.url === "/credentialed-no-vary") {
+        const lastModified = "Tue, 01 Sep 2026 01:00:00 GMT";
+        if (request.headers["if-modified-since"] === lastModified) {
+          response.writeHead(304, { "last-modified": lastModified }).end();
+          return;
+        }
+        const authenticated = request.headers.authorization !== undefined;
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            "last-modified": lastModified
+          })
+          .end(
+            `<html><head><title>Account</title></head><body><article><p>${
+              authenticated ? "Private account article." : "Public account article."
+            }</p></article></body></html>`
           );
         return;
       }
@@ -624,6 +676,122 @@ describe("getPage", () => {
       lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
     });
     expect(document?.frontmatter.last_modified).toBe("2026-08-31T03:00:00Z");
+  });
+
+  it("removes Last-Modified when a 304 replacement is invalid", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-last-modified`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    invalidLastModifiedOn304 = true;
+
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-last-modified`,
+      root,
+      update: true,
+      assets: false,
+      useAsync: false
+    });
+    const document = parseDocument(await readFile(first.path, "utf8"));
+
+    expect(updated.status).toBe("unchanged");
+    expect(updated.warnings).toContainEqual(
+      expect.objectContaining({ code: "INVALID_LAST_MODIFIED" })
+    );
+    expect(document?.frontmatter).not.toHaveProperty("last_modified");
+    expect(document?.frontmatter).not.toHaveProperty("vary");
+  });
+
+  it("does not reuse validators for a response that varies by authorization", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/vary-authorization`,
+      root,
+      assets: false,
+      headers: [{ name: "Authorization", value: "Bearer private" }],
+      useAsync: false
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    expect(before?.frontmatter.vary).toEqual(["authorization"]);
+    expect(before?.frontmatter).not.toHaveProperty("last_modified");
+    expect(before?.markdown).toContain("Private account article.");
+
+    const updated = await getPage({
+      url: `${baseUrl}/vary-authorization`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    const after = parseDocument(await readFile(updated.path, "utf8"));
+    expect(updated.status).toBe("updated");
+    expect(conditionalHeaders.at(-1)).toEqual({
+      path: "/vary-authorization"
+    });
+    expect(after?.frontmatter.vary).toEqual(["authorization"]);
+    expect(after?.markdown).toContain("Public account article.");
+  });
+
+  it("does not persist validators for credentialed requests without Vary", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/credentialed-no-vary`,
+      root,
+      assets: false,
+      headers: [{ name: "Authorization", value: "******" }],
+      useAsync: false
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    expect(before?.frontmatter).not.toHaveProperty("last_modified");
+    expect(before?.frontmatter).not.toHaveProperty("vary");
+    expect(before?.markdown).toContain("Private account article.");
+
+    const updated = await getPage({
+      url: `${baseUrl}/credentialed-no-vary`,
+      root,
+      update: true,
+      assets: false,
+      useAsync: false
+    });
+    const after = parseDocument(await readFile(updated.path, "utf8"));
+
+    expect(updated.status).toBe("updated");
+    expect(conditionalHeaders.at(-1)).toEqual({
+      path: "/credentialed-no-vary"
+    });
+    expect(after?.frontmatter.last_modified).toBe("2026-09-01T01:00:00Z");
+    expect(after?.frontmatter.vary).toEqual([]);
+    expect(after?.markdown).toContain("Public account article.");
+  });
+
+  it("migrates legacy validators without Vary context through an ordinary GET", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const document = parseDocument(await readFile(first.path, "utf8"));
+    const legacyFrontmatter = { ...document?.frontmatter };
+    delete legacyFrontmatter.vary;
+    await writeFile(
+      first.path,
+      serializeDocument(legacyFrontmatter, document?.markdown ?? "")
+    );
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.status).toBe("unchanged");
+    expect(conditionalHeaders.at(-1)).toEqual({
+      path: "/conditional-etag"
+    });
+    expect(
+      parseDocument(await readFile(updated.path, "utf8"))?.frontmatter.vary
+    ).toEqual([]);
   });
 
   it("preserves the existing document when an update returns 404", async () => {
