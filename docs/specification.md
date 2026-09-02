@@ -173,7 +173,8 @@ again while streaming the response body.
 Headers supplied by the caller are sent to the initial page origin and
 same-origin redirects. All caller-supplied headers are removed after a
 cross-origin redirect and are not restored for later requests in that page
-operation.
+operation, including direct retries made against an existing redirect
+destination.
 
 In this section, "caller-supplied headers" means entries from CLI `--header`
 or library `GetPageOptions.headers`. The separately selected User-Agent is

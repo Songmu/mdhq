@@ -345,12 +345,21 @@ describe("getPage", () => {
     crossOriginTarget = `http://127.0.0.1:${address.port}/article`;
     try {
       await getPage({
+        url: crossOriginTarget,
+        root,
+        assets: false,
+        useAsync: false
+      });
+      received.length = 0;
+      await getPage({
         url: `${baseUrl}/cross-origin`,
         root,
+        update: true,
         headers: [{ name: "Authorization", value: "Bearer secret" }],
         useAsync: false
       });
       expect(received).toEqual([
+        { url: "/article" },
         { url: "/article" },
         { url: "/image.png" }
       ]);

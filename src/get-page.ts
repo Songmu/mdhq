@@ -49,14 +49,16 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   return getPageAttempt(
     { options, requestedUrl, loaded, warnings, warn, root },
     requestedUrl,
-    2
+    2,
+    true
   );
 }
 
 async function getPageAttempt(
   context: GetPageContext,
   fetchUrl: string,
-  retriesRemaining: number
+  retriesRemaining: number,
+  callerHeadersAllowed: boolean
 ): Promise<GetPageResult> {
   const { options, requestedUrl, loaded, warnings, warn, root } = context;
   const requested = new URL(fetchUrl);
@@ -87,7 +89,7 @@ async function getPageAttempt(
       warnings
     };
   }
-  const headers = options.headers;
+  const headers = callerHeadersAllowed ? options.headers : [];
   const userAgent = options.userAgent ?? loaded.config.userAgent;
   const timeoutMs = options.timeoutMs ?? loaded.config.timeoutMs;
   const maxResponseBytes = options.maxResponseBytes ?? loaded.config.maxResponseBytes;
@@ -118,6 +120,8 @@ async function getPageAttempt(
     ...http,
     ...(conditional ? { conditional } : {})
   });
+  const responseHeadersAllowed =
+    callerHeadersAllowed && fetched.customHeadersAllowed;
   const now = options.now?.() ?? new Date();
   const normalizeLastModified = (
     value: string | undefined,
@@ -180,7 +184,12 @@ async function getPageAttempt(
           `Destination changed repeatedly while updating ${requestedPath}`
         );
       }
-      return getPageAttempt(context, fetchUrl, retriesRemaining - 1);
+      return getPageAttempt(
+        context,
+        fetchUrl,
+        retriesRemaining - 1,
+        responseHeadersAllowed
+      );
     }
     return {
       requestedUrl,
@@ -220,7 +229,12 @@ async function getPageAttempt(
         `Redirect destination changed repeatedly while updating ${markdownPath}`
       );
     }
-    return getPageAttempt(context, finalUrl.href, retriesRemaining - 1);
+    return getPageAttempt(
+      context,
+      finalUrl.href,
+      retriesRemaining - 1,
+      responseHeadersAllowed
+    );
   }
   if (existing && !options.update) {
     return {
@@ -279,7 +293,7 @@ async function getPageAttempt(
         markdownPath,
         root,
         baseUrl: finalUrl.href,
-        http: fetched.customHeadersAllowed ? http : { ...http, headers: [] },
+        http: responseHeadersAllowed ? http : { ...http, headers: [] },
         warn
       })
     : {
@@ -329,7 +343,12 @@ async function getPageAttempt(
         `Destination changed repeatedly while updating ${markdownPath}`
       );
     }
-    return getPageAttempt(context, fetchUrl, retriesRemaining - 1);
+    return getPageAttempt(
+      context,
+      fetchUrl,
+      retriesRemaining - 1,
+      responseHeadersAllowed
+    );
   }
   return {
     requestedUrl,
