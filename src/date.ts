@@ -358,7 +358,7 @@ function normalizeEpochBigInt(value: bigint): string | undefined {
 }
 
 function normalizeEpochNumber(value: number): string | undefined {
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || !Number.isSafeInteger(value)) {
     return undefined;
   }
   // Route through the string path so a compact YYYYMMDD-shaped integer (e.g.

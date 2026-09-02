@@ -112,7 +112,11 @@ describe("normalizeSourceDate", () => {
   });
 
   it("uses floor division for negative fractional epochs", () => {
-    expect(normalizeSourceDate("-1000000000000001")).toBe("1969-12-20T10:13:19Z");
+    expect(normalizeSourceDate("-1000000000000001")).toBe("1938-04-24T22:13:19Z");
+  });
+
+  it("rejects unsafe integer numbers that JavaScript has already rounded", () => {
+    expect(normalizeSourceDate(Number.MAX_SAFE_INTEGER + 1)).toBeUndefined();
   });
 
   it("rejects numeric values with too few or too many digits to plausibly be an epoch", () => {

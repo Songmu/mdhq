@@ -68,16 +68,23 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
       throw new MdhqError("CONVERSION_FAILED", `Defuddle returned no content for ${url.href}`);
     }
     const publishedFromDefuddle = normalizeSourceDate(nonempty(result.published));
+    const synthesizedMidnightDate =
+      publishedFromMetadata === undefined &&
+      publishedFromDefuddle?.match(/^\d{4}-\d{2}-\d{2}T00:00:00(?:Z|\+00:00)$/u)
+        ? publishedFromDefuddle
+        : undefined;
     const publishedDateOnlyEvidence =
-      publishedFromDefuddle && dateOnlyEvidence(document, publishedFromDefuddle.slice(0, 10));
+      synthesizedMidnightDate === undefined
+        ? undefined
+        : dateOnlyEvidence(document, synthesizedMidnightDate.slice(0, 10));
     const hasExplicitMidnightDateTime =
-      publishedFromDefuddle !== undefined &&
-      hasExplicitDateTime(document, publishedFromDefuddle.slice(0, 10));
+      synthesizedMidnightDate !== undefined &&
+      hasExplicitDateTime(document, synthesizedMidnightDate.slice(0, 10));
     const published =
       publishedFromMetadata ??
-      (publishedFromDefuddle?.match(/^\d{4}-\d{2}-\d{2}T00:00:00(?:Z|\+00:00)$/u) &&
+      (synthesizedMidnightDate !== undefined &&
       !hasExplicitMidnightDateTime &&
-      publishedDateOnlyEvidence === publishedFromDefuddle.slice(0, 10)
+      publishedDateOnlyEvidence === synthesizedMidnightDate.slice(0, 10)
         ? publishedDateOnlyEvidence
         : publishedFromDefuddle);
     const metadata: PageMetadata = {};
