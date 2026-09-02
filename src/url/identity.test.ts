@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createUrlIdentity,
   normalizeHost,
+  sameHttpTarget,
   sameUrlIdentity,
   serializeUrlIdentity
 } from "./identity.js";
@@ -63,5 +64,26 @@ describe("URL identity", () => {
         "https://example.com/article"
       )
     ).toBe(true);
+  });
+
+  it("scopes HTTP targets more narrowly than storage identity", () => {
+    expect(
+      sameHttpTarget(
+        "https://example.com/article?a=1#top",
+        "https://example.com/article?a=1#bottom"
+      )
+    ).toBe(true);
+    expect(
+      sameHttpTarget(
+        "http://example.com/article?a=1",
+        "https://example.com/article?a=1"
+      )
+    ).toBe(false);
+    expect(
+      sameHttpTarget(
+        "https://example.com/article?a=1",
+        "https://example.com/article?b=2"
+      )
+    ).toBe(false);
   });
 });

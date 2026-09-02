@@ -2,13 +2,57 @@ import { loadConfig, resolveRoot } from "./config/config.js";
 import { resolveHostConfig } from "./config/match.js";
 import { convertHtml } from "./convert/convert-html.js";
 import { localizeAssets } from "./assets/localize.js";
-import { buildFrontmatter, serializeDocument } from "./frontmatter/frontmatter.js";
+import {
+  httpDateToRfc3339,
+  isRfc3339DateTime,
+  rfc3339ToHttpDate
+} from "./date.js";
+import { MdhqError } from "./errors.js";
+import {
+  buildFrontmatter,
+  markdownContentDigest,
+  refreshFrontmatter,
+  serializeDocument
+} from "./frontmatter/frontmatter.js";
 import { fetchHtml, fetchWithEnvProxy } from "./http/fetch.js";
 import { transformMarkdown } from "./markdown/transform.js";
 import { storagePathForUrl } from "./path/storage-path.js";
 import { inspectDestination, saveDocument } from "./storage/save.js";
 import type { GetPageOptions, GetPageResult, MdhqWarning } from "./types.js";
-import { normalizeHost, parseHttpUrl } from "./url/identity.js";
+import {
+  normalizeHost,
+  parseHttpUrl,
+  sameHttpTarget
+} from "./url/identity.js";
+
+interface GetPageContext {
+  options: GetPageOptions;
+  requestedUrl: string;
+  loaded: Awaited<ReturnType<typeof loadConfig>>;
+  warnings: MdhqWarning[];
+  warn: (warning: MdhqWarning) => void;
+  root: string;
+}
+
+function varyNames(value: string | undefined): string[] {
+  return [
+    ...new Set(
+      (value ?? "")
+        .split(",")
+        .map((name) => name.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function hasCredentialHeaders(
+  headers: readonly { name: string }[] | undefined
+): boolean {
+  return (headers ?? []).some((header) => {
+    const name = header.name.toLowerCase();
+    return name === "authorization" || name === "cookie";
+  });
+}
 
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   const requestedUrl = parseHttpUrl(options.url).href;
@@ -22,7 +66,22 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     warn(warning);
   }
   const root = resolveRoot(options.root, loaded.config);
-  const requested = new URL(requestedUrl);
+  return getPageAttempt(
+    { options, requestedUrl, loaded, warnings, warn, root },
+    requestedUrl,
+    2,
+    true
+  );
+}
+
+async function getPageAttempt(
+  context: GetPageContext,
+  fetchUrl: string,
+  retriesRemaining: number,
+  callerHeadersAllowed: boolean
+): Promise<GetPageResult> {
+  const { options, requestedUrl, loaded, warnings, warn, root } = context;
+  const requested = new URL(fetchUrl);
   const requestedConfig = resolveHostConfig(
     normalizeHost(requested),
     requested.pathname,
@@ -36,7 +95,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   });
   const requestedExisting = await inspectDestination(
     requestedPath,
-    requestedUrl,
+    fetchUrl,
     requestedEntryKey,
     root
   );
@@ -50,7 +109,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
       warnings
     };
   }
-  const headers = options.headers;
+  const headers = callerHeadersAllowed ? options.headers : [];
   const userAgent = options.userAgent ?? loaded.config.userAgent;
   const timeoutMs = options.timeoutMs ?? loaded.config.timeoutMs;
   const maxResponseBytes = options.maxResponseBytes ?? loaded.config.maxResponseBytes;
@@ -62,7 +121,120 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     ...(maxResponseBytes !== undefined ? { maxResponseBytes } : {}),
     ...(maxRedirects !== undefined ? { maxRedirects } : {})
   };
-  const fetched = await fetchHtml(requestedUrl, http);
+  let conditional: { etag?: string; lastModified?: string } | undefined;
+  if (
+    options.update &&
+    requestedExisting &&
+    requestedExisting.vary?.length === 0 &&
+    !hasCredentialHeaders(headers) &&
+    sameHttpTarget(requestedExisting.sourceUrl, fetchUrl)
+  ) {
+    if (requestedExisting.etag) {
+      conditional = { etag: requestedExisting.etag };
+    } else {
+      const lastModified = rfc3339ToHttpDate(requestedExisting.lastModified);
+      if (lastModified) {
+        conditional = { lastModified };
+      }
+    }
+  }
+  const fetched = await fetchHtml(fetchUrl, {
+    ...http,
+    ...(conditional ? { conditional } : {})
+  });
+  const responseHeadersAllowed =
+    callerHeadersAllowed && fetched.customHeadersAllowed;
+  const now = options.now?.() ?? new Date();
+  const normalizeLastModified = (
+    value: string | undefined,
+    fallback?: string
+  ): string | undefined => {
+    const validFallback = rfc3339ToHttpDate(fallback) ? fallback : undefined;
+    if (!value) {
+      return validFallback;
+    }
+    const normalized = httpDateToRfc3339(value);
+    if (!normalized) {
+      warn({
+        code: "INVALID_LAST_MODIFIED",
+        message: `Invalid Last-Modified response header: ${value}`,
+        url: fetched.finalUrl
+      });
+      return undefined;
+    }
+    return normalized;
+  };
+  if (fetched.notModified) {
+    if (!requestedExisting || !conditional) {
+      throw new MdhqError(
+        "FETCH_FAILED",
+        `HTTP 304 for ${fetchUrl} without a matching stored validator`
+      );
+    }
+    const lastModified = normalizeLastModified(
+      fetched.lastModified,
+      requestedExisting.lastModified
+    );
+    const vary = varyNames(fetched.vary);
+    const validatorsReusable =
+      vary.length === 0 && !hasCredentialHeaders(headers);
+    const etag = validatorsReusable
+      ? fetched.etag ?? requestedExisting.etag
+      : undefined;
+    const reusableLastModified = validatorsReusable ? lastModified : undefined;
+    const frontmatter = refreshFrontmatter(requestedExisting.frontmatter, {
+      sourceUrl: requestedExisting.sourceUrl,
+      requestedUrl,
+      created:
+        isRfc3339DateTime(requestedExisting.created)
+          ? requestedExisting.created
+          : now,
+      modified: now,
+      contentDigest: requestedExisting.contentDigest,
+      ...(etag ? { etag } : {}),
+      ...(reusableLastModified
+        ? { lastModified: reusableLastModified }
+        : {}),
+      ...(vary.length > 0
+        ? { vary }
+        : etag || reusableLastModified
+          ? { vary: [] }
+          : {}),
+      ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
+    });
+    const content = serializeDocument(frontmatter, requestedExisting.markdown);
+    const storageStatus = await saveDocument({
+      path: requestedPath,
+      content,
+      sourceUrl: requestedExisting.sourceUrl,
+      update: true,
+      expectedContent: requestedExisting.content,
+      root,
+      ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
+    });
+    if (storageStatus === "conflicted") {
+      if (retriesRemaining === 0) {
+        throw new MdhqError(
+          "STORAGE_ERROR",
+          `Destination changed repeatedly while updating ${requestedPath}`
+        );
+      }
+      return getPageAttempt(
+        context,
+        fetchUrl,
+        retriesRemaining - 1,
+        responseHeadersAllowed
+      );
+    }
+    return {
+      requestedUrl,
+      sourceUrl: requestedExisting.sourceUrl,
+      path: requestedPath,
+      status: storageStatus === "updated" ? "unchanged" : storageStatus,
+      assets: [],
+      warnings
+    };
+  }
   const finalUrl = new URL(fetched.finalUrl);
   const matchedConfig = resolveHostConfig(
     normalizeHost(finalUrl),
@@ -81,6 +253,24 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     entryQueryKey,
     root
   );
+  if (
+    options.update &&
+    existing &&
+    markdownPath !== requestedPath
+  ) {
+    if (retriesRemaining === 0) {
+      throw new MdhqError(
+        "STORAGE_ERROR",
+        `Redirect destination changed repeatedly while updating ${markdownPath}`
+      );
+    }
+    return getPageAttempt(
+      context,
+      finalUrl.href,
+      retriesRemaining - 1,
+      responseHeadersAllowed
+    );
+  }
   if (existing && !options.update) {
     return {
       requestedUrl,
@@ -92,6 +282,10 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     };
   }
 
+  const expectedExisting =
+    markdownPath === requestedPath ? requestedExisting : existing;
+  const responseCredentialed =
+    responseHeadersAllowed && hasCredentialHeaders(http.headers);
   const converted = await convertHtml({
     html: fetched.html,
     url: finalUrl,
@@ -136,7 +330,7 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         markdownPath,
         root,
         baseUrl: finalUrl.href,
-        http: fetched.customHeadersAllowed ? http : { ...http, headers: [] },
+        http: responseHeadersAllowed ? http : { ...http, headers: [] },
         warn
       })
     : {
@@ -144,17 +338,30 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
         assets: [],
         ...(metadata.image ? { representativeImage: metadata.image } : {})
       };
-  const now = options.now?.() ?? new Date();
   const created =
-    existing?.created && !Number.isNaN(Date.parse(existing.created))
-      ? existing.created
+    isRfc3339DateTime(expectedExisting?.created)
+      ? expectedExisting.created
       : now;
+  const contentDigest = markdownContentDigest(localized.markdown);
+  const lastModified = normalizeLastModified(fetched.lastModified);
+  const vary = varyNames(fetched.vary);
+  const validatorsReusable = vary.length === 0 && !responseCredentialed;
+  const etag = validatorsReusable ? fetched.etag : undefined;
+  const reusableLastModified = validatorsReusable ? lastModified : undefined;
   const frontmatter = buildFrontmatter({
     metadata,
     sourceUrl: finalUrl.href,
     requestedUrl,
     created,
-    ...(existing && options.update ? { modified: now } : {}),
+    modified: now,
+    contentDigest,
+    ...(etag ? { etag } : {}),
+    ...(reusableLastModified ? { lastModified: reusableLastModified } : {}),
+    ...(vary.length > 0
+      ? { vary }
+      : etag || reusableLastModified
+        ? { vary: [] }
+        : {}),
     ...(localized.representativeImage
       ? { image: localized.representativeImage }
       : {}),
@@ -164,19 +371,40 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
   });
   const content = serializeDocument(frontmatter, localized.markdown);
-  const status = await saveDocument({
+  const storageStatus = await saveDocument({
     path: markdownPath,
     content,
     sourceUrl: finalUrl.href,
     update: options.update ?? false,
+    ...(options.update
+      ? { expectedContent: expectedExisting?.content ?? null }
+      : {}),
     root,
     ...(entryQueryKey ? { entryQueryKey } : {})
   });
+  if (storageStatus === "conflicted") {
+    if (retriesRemaining === 0) {
+      throw new MdhqError(
+        "STORAGE_ERROR",
+        `Destination changed repeatedly while updating ${markdownPath}`
+      );
+    }
+    return getPageAttempt(
+      context,
+      fetchUrl,
+      retriesRemaining - 1,
+      responseHeadersAllowed
+    );
+  }
   return {
     requestedUrl,
     sourceUrl: finalUrl.href,
     path: markdownPath,
-    status,
+    status:
+      storageStatus === "updated" &&
+      expectedExisting?.contentDigest === contentDigest
+        ? "unchanged"
+        : storageStatus,
     assets: localized.assets,
     warnings
   };

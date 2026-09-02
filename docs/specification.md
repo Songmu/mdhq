@@ -58,7 +58,9 @@ With `--json`, stdout contains an object with this shape:
 `status` is one of:
 
 - `saved`: a new Markdown file was created.
-- `updated`: an existing same-identity Markdown file was atomically replaced.
+- `updated`: an existing document's normalized Markdown body changed.
+- `unchanged`: an update succeeded without changing the normalized Markdown
+  body, including an HTTP 304 response.
 - `skipped`: an existing same-identity file was kept.
 
 An error is written to stderr and causes exit status `1`.
@@ -100,8 +102,9 @@ create it.
 8. Convert the fetched HTML to Markdown with Defuddle.
 9. Normalize ordinary links and discover image links.
 10. Download supported images and rewrite successful image destinations.
-11. Build YAML frontmatter.
-12. Save the Markdown with collision-safe create or update behavior.
+11. Normalize the Markdown body and calculate its SHA-256 content digest.
+12. Build YAML frontmatter.
+13. Save the Markdown with collision-safe create or update behavior.
 
 The final URL determines the destination and the `source` frontmatter field.
 The original URL is retained as `requested_url` only when it differs from the
@@ -121,6 +124,55 @@ Defaults:
 | Timeout | 30 seconds per request attempt |
 | Maximum response size | 20 MiB per resource |
 | Maximum redirects | 10 |
+
+With `update`, mdhq uses validators from a recognized existing destination:
+
+1. Confirm that `vary: []` records a prior response without a `Vary` header.
+2. Confirm that the stored `source` is the same HTTP target as the requested
+   URL, comparing scheme, authority, path, and query while ignoring fragments.
+3. Send `If-None-Match` when frontmatter contains `etag`.
+4. Otherwise send `If-Modified-Since` when frontmatter contains a valid
+   `last_modified`.
+5. Otherwise perform an ordinary GET.
+
+Storage identity is intentionally broader than HTTP validator scope. A
+same-identity URL with a different scheme, query, or path alias is fetched
+without stored validators. Legacy documents with validators but no `vary`
+field are also fetched unconditionally once before becoming eligible for
+revalidation.
+
+Automatic validators are sent only on the first request and are not forwarded
+after redirects. When a stored validator is available, it replaces any
+caller-provided `If-None-Match` or `If-Modified-Since` value so that an HTTP
+304 always corresponds to the saved document. A 304 received without a stored
+validator is an error.
+
+An HTTP 304 response preserves the existing Markdown body, skips conversion
+and asset downloads, updates `modified`, and returns `unchanged`. A 200
+response replaces stored validators with the response values; validators that
+are absent from a 200 response are removed.
+
+Responses with a non-empty `Vary` header store the normalized header names in
+`vary` but do not store ETag or Last-Modified validators. Response header
+values named by `Vary` and request credentials are never persisted. Responses
+without `Vary` store `vary: []` when a validator is available.
+
+Requests containing caller-supplied `Authorization` or `Cookie` headers never
+reuse or persist HTTP validators, even when the response omits `Vary`. This
+prevents a later request with a different credential context from accepting a
+304 for a representation it did not fetch.
+
+Any other non-success response, including `404 Not Found` and `410 Gone`,
+fails the update before conversion or storage. The existing Markdown document,
+frontmatter timestamps, validators, and localized assets remain unchanged.
+
+All destination writes are serialized with a per-file cross-process lock.
+Before saving either a 304 or 200 update, mdhq verifies that the destination
+still matches the exact document snapshot read before the request. If another
+writer changed it while the request or conversion was in flight, mdhq leaves
+that document untouched and restarts the complete update from the latest
+snapshot. Retries are bounded to two restarts; repeated contention fails
+without overwriting the competing update.
 
 Page responses must have one of these media types:
 
@@ -143,7 +195,8 @@ again while streaming the response body.
 Headers supplied by the caller are sent to the initial page origin and
 same-origin redirects. All caller-supplied headers are removed after a
 cross-origin redirect and are not restored for later requests in that page
-operation.
+operation, including direct retries made against an existing redirect
+destination.
 
 In this section, "caller-supplied headers" means entries from CLI `--header`
 or library `GetPageOptions.headers`. The separately selected User-Agent is
@@ -390,11 +443,14 @@ files.
 Assets are stored under:
 
 ```text
-<root>/_assets/<md5-of-final-url>.<extension>
+<root>/_assets/<sha256-of-content>.<extension>
 ```
 
-The hash input is the complete final asset URL after redirects, including its
-query string.
+The digest component is calculated from the complete fetched response body
+after redirects. The extension is selected from Content-Type, falling back to
+the final URL pathname when Content-Type is missing. Identical bytes therefore
+share the same digest, while differing media metadata can still select a
+different extension.
 
 Downloaded asset candidates are:
 
@@ -424,11 +480,12 @@ even when the URL looks like an image.
 Up to six assets are fetched concurrently. Result ordering still follows the
 first occurrence in the document.
 
-Asset content is first written completely to a same-directory temporary file.
-A new destination is published without replacing an existing file. When the
-deterministic path already exists, its bytes are compared with the fetched
-content. Identical content is reported as `reused`; differing content is
-atomically replaced and reported as `saved`.
+Asset paths are immutable and content-addressed by the SHA-256 digest of the
+fetched bytes. Content is first written completely to a same-directory
+temporary file and a new destination is published without replacing an
+existing file. When the deterministic path already exists, identical content
+is reported as `reused`; differing content is treated as a digest collision
+and reported as an asset failure.
 
 An individual asset failure:
 
@@ -460,6 +517,7 @@ Metadata fields are emitted when non-empty:
 - `description`
 - `author`
 - `published`
+- `updated`
 - `site`
 - `domain`
 - `language`
@@ -471,18 +529,39 @@ mdhq-controlled fields:
 
 - `source`: final page URL
 - `requested_url`: original URL, only when different from `source`
-- `type`: always `clip`
 - `created`: initial local acquisition time
-- `modified`: update time, only when replacing an existing document
+- `modified`: latest successful acquisition or HTTP revalidation time
+- `content_digest`: SHA-256 digest of the normalized Markdown body
+- `etag`: HTTP ETag stored verbatim, when supplied
+- `last_modified`: HTTP Last-Modified converted to RFC 3339 UTC, when valid
+- `vary`: normalized response `Vary` header names, or an empty list certifying
+  that stored validators came from a response without `Vary`
 
-`created` and `modified` use local-offset RFC 3339 timestamps with
-second-level precision. A valid existing `created` string is preserved
-verbatim during an update, including its original UTC offset.
+`created` and `modified` are both written on initial acquisition and use
+local-offset RFC 3339 timestamps with second-level precision. A valid existing
+`created` string is preserved verbatim during an update, including its
+original UTC offset.
+
+`published` and `updated` are source-article metadata. Instants are normalized
+to RFC 3339 with second precision; genuinely date-only values remain
+`YYYY-MM-DD`. `updated` is extracted from Schema.org `dateModified`, article
+or Open Graph modification metadata, or `itemprop="dateModified"`. Schema.org
+selection prefers an entity linked to the current page through `url`, `@id`,
+`mainEntity`, or `mainEntityOfPage`; concrete Article and Posting types rank
+ahead of generic WebPage and CreativeWork fallbacks, independently of graph
+order.
+
+The Markdown body uses LF line endings, has trailing whitespace removed, and
+ends with exactly one LF. `content_digest` is calculated from the UTF-8 bytes
+of that normalized body only. Frontmatter, delimiters, and the blank line
+between frontmatter and body are excluded.
 
 Configured exclusions and values are applied before mdhq-controlled fields.
-Consequently `source`, `requested_url`, `type`, `created`, and `modified`
-cannot be removed or overridden by frontmatter configuration. Other fields,
-including extracted metadata and `image`, can be excluded or replaced.
+Consequently `source`, `requested_url`, `created`, `modified`,
+`content_digest`, `etag`, `last_modified`, and `vary` cannot be removed or overridden
+by frontmatter configuration. Other fields, including extracted metadata,
+`image`, and `type`, can be excluded or replaced. mdhq does not emit `type` by
+default; it can be added with `frontmatter.values`.
 
 ## Existing files and concurrent writes
 
@@ -502,26 +581,38 @@ Without `update`:
 
 With `update`:
 
+- all mdhq writes to the same destination are serialized by a transient
+  cross-process lock
 - a missing destination is still created exclusively
-- a concurrently created same-identity destination returns `skipped`
-- a concurrently created different-identity destination returns
-  `PATH_COLLISION`
 - an existing same-identity document is written to a temporary file in the
   same directory and replaced with an atomic rename
-- the identity is checked again immediately before replacement
+- the exact serialized snapshot read before fetching is checked again while
+  holding the destination lock
+- a conflicting same-identity write restarts the complete update from the
+  latest snapshot, with at most two restarts
+- a different-identity destination returns `PATH_COLLISION`
+- an HTTP 304 or a 200 response with an unchanged normalized Markdown body
+  returns `unchanged`
+- a 200 response with a changed normalized Markdown body returns `updated`
 - temporary files are removed after success or failure
 
-No persistent lock files are created.
+Lock directories are removed when the write completes. Stale locks left by a
+terminated process are recovered by the lock implementation. A writer waits
+up to 60 seconds for a healthy writer holding the same destination lock before
+returning a storage error.
 
 Initial Markdown and asset publication requires filesystem hard-link support.
 This is supported by standard Windows NTFS volumes and common Linux and macOS
 filesystems. mdhq returns a storage or asset error rather than degrading to
 a partially visible copy on a filesystem that rejects hard links.
 
-Simultaneous updates of the same URL identity are allowed. Each replacement
-is atomic, but mdhq does not provide compare-and-swap semantics between
-same-identity writers. The last successful rename determines the final
-document.
+Simultaneous mdhq updates of the same destination use compare-and-swap
+semantics: a writer can commit only while the destination still matches the
+snapshot that authorized its fetch. Localized assets are immutable and
+content-addressed, so a losing update cannot replace bytes referenced by the
+winning document. Programs that modify storage files directly do not
+participate in mdhq's lock protocol and should not edit a destination while an
+mdhq write is in progress.
 
 ## Warnings and errors
 
@@ -533,6 +624,7 @@ Current warning codes:
 - `UNKNOWN_CONFIG_KEY`
 - `ASSET_FETCH_FAILED`
 - `INVALID_IMAGE_URL`
+- `INVALID_LAST_MODIFIED`
 
 Fatal library errors are instances of `MdhqError`. See
 [Library API reference](library-api.md#error-model) for the current codes.

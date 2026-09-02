@@ -21,6 +21,15 @@ describe("fetchHtml", () => {
         response.writeHead(200, { "content-type": "application/json" }).end("{}");
         return;
       }
+      if (request.url === "/vary") {
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            vary: "Authorization, Cookie"
+          })
+          .end("<html></html>");
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(`<html><body>${request.headers["x-test"] ?? ""}</body></html>`);
@@ -41,7 +50,10 @@ describe("fetchHtml", () => {
       headers: [{ name: "X-Test", value: "present" }]
     });
     expect(result.finalUrl).toBe(`${baseUrl}/page`);
-    expect(result.html).toContain("present");
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("present");
+    }
   });
 
   it("does not forward custom headers across origins", async () => {
@@ -127,6 +139,11 @@ describe("fetchHtml", () => {
     });
   });
 
+  it("captures the Vary response header", async () => {
+    const result = await fetchHtml(`${baseUrl}/vary`);
+    expect(result.vary).toBe("Authorization, Cookie");
+  });
+
   it("enforces the response size limit", async () => {
     await expect(fetchHtml(`${baseUrl}/large`, { maxResponseBytes: 20 })).rejects.toMatchObject({
       code: "RESPONSE_TOO_LARGE"
@@ -162,6 +179,107 @@ describe("fetchHtml", () => {
       });
     } finally {
       await new Promise<void>((resolve) => redirect.close(() => resolve()));
+    }
+  });
+
+  it("uses ETag before Last-Modified and accepts 304 without a body", async () => {
+    let receivedHeaders: Record<string, string | undefined> = {};
+    const conditionalServer = createServer((request, response) => {
+      receivedHeaders = {
+        ifNoneMatch: request.headers["if-none-match"],
+        ifModifiedSince: request.headers["if-modified-since"]
+      };
+      response.writeHead(304, { etag: '"new"' }).end();
+    });
+    await new Promise<void>((resolve) =>
+      conditionalServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = conditionalServer.address() as AddressInfo;
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${address.port}/`, {
+        headers: [
+          { name: "If-None-Match", value: '"caller"' },
+          { name: "If-Modified-Since", value: "Sun, 30 Aug 2026 03:00:00 GMT" }
+        ],
+        conditional: {
+          etag: '"old"',
+          lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
+        }
+      });
+      expect(result.notModified).toBe(true);
+      expect(result.etag).toBe('"new"');
+      expect(receivedHeaders).toEqual({
+        ifNoneMatch: '"old"',
+        ifModifiedSince: undefined
+      });
+    } finally {
+      await new Promise<void>((resolve) => conditionalServer.close(() => resolve()));
+    }
+  });
+
+  it("falls back to If-Modified-Since and drops validators after redirects", async () => {
+    const received: Array<{
+      path: string;
+      etag?: string;
+      lastModified?: string;
+    }> = [];
+    const redirectServer = createServer((request, response) => {
+      received.push({
+        path: request.url ?? "",
+        ...(request.headers["if-none-match"]
+          ? { etag: request.headers["if-none-match"] }
+          : {}),
+        ...(request.headers["if-modified-since"]
+          ? { lastModified: request.headers["if-modified-since"] }
+          : {})
+      });
+      if (request.url === "/start") {
+        response.writeHead(302, { location: "/final" }).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/html" }).end("<html></html>");
+    });
+    await new Promise<void>((resolve) =>
+      redirectServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = redirectServer.address() as AddressInfo;
+    try {
+      await fetchHtml(`http://127.0.0.1:${address.port}/start`, {
+        headers: [{ name: "If-None-Match", value: '"caller"' }],
+        conditional: { lastModified: "Mon, 31 Aug 2026 03:00:00 GMT" }
+      });
+      expect(received).toEqual([
+        {
+          path: "/start",
+          lastModified: "Mon, 31 Aug 2026 03:00:00 GMT"
+        },
+        { path: "/final" }
+      ]);
+    } finally {
+      await new Promise<void>((resolve) => redirectServer.close(() => resolve()));
+    }
+  });
+
+  it("rejects a 304 received after a redirect", async () => {
+    const redirectServer = createServer((request, response) => {
+      if (request.url === "/start") {
+        response.writeHead(302, { location: "/final" }).end();
+        return;
+      }
+      response.writeHead(304).end();
+    });
+    await new Promise<void>((resolve) =>
+      redirectServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = redirectServer.address() as AddressInfo;
+    try {
+      await expect(
+        fetchHtml(`http://127.0.0.1:${address.port}/start`, {
+          conditional: { etag: '"stored"' }
+        })
+      ).rejects.toMatchObject({ code: "FETCH_FAILED" });
+    } finally {
+      await new Promise<void>((resolve) => redirectServer.close(() => resolve()));
     }
   });
 });

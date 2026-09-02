@@ -1,15 +1,50 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { link, mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { lock } from "proper-lockfile";
 import { assertSafeDestination } from "./path-safety.js";
 
 type FileContent = string | Uint8Array;
+
+const LOCK_STALE_MS = 300_000;
+const LOCK_RETRY_INTERVAL_MS = 100;
+const LOCK_WAIT_MS = 60_000;
 
 function temporaryPath(targetPath: string): string {
   return path.join(
     path.dirname(targetPath),
     `.${path.basename(targetPath)}.${randomUUID()}.tmp`
   );
+}
+
+export async function withDestinationLock<T>(
+  targetPath: string,
+  operation: () => Promise<T>,
+  root?: string
+): Promise<T> {
+  const lockPath = `${targetPath}.lock`;
+  if (root) {
+    await assertSafeDestination(root, lockPath);
+  }
+  await mkdir(path.dirname(lockPath), { recursive: true });
+  const release = await lock(targetPath, {
+    realpath: false,
+    lockfilePath: lockPath,
+    stale: LOCK_STALE_MS,
+    update: LOCK_STALE_MS / 3,
+    retries: {
+      retries: LOCK_WAIT_MS / LOCK_RETRY_INTERVAL_MS,
+      factor: 1,
+      minTimeout: LOCK_RETRY_INTERVAL_MS,
+      maxTimeout: LOCK_RETRY_INTERVAL_MS,
+      randomize: false
+    }
+  });
+  try {
+    return await operation();
+  } finally {
+    await release();
+  }
 }
 
 export async function publishFileExclusive(

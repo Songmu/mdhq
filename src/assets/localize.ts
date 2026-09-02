@@ -3,7 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fetchResource, type FetchResourceOptions } from "../http/fetch.js";
 import { rewriteImageUrls } from "../markdown/transform.js";
-import { publishFileExclusive, replaceFileAtomic } from "../storage/atomic.js";
+import { publishFileExclusive } from "../storage/atomic.js";
 import type { AssetResult, MdhqWarning } from "../types.js";
 
 const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
@@ -39,8 +39,7 @@ async function saveAsset(
   if (Buffer.from(body).equals(existing)) {
     return "reused";
   }
-  await replaceFileAtomic(assetPath, body, { root });
-  return "saved";
+  throw new Error(`Asset digest collision: ${assetPath}`);
 }
 
 export interface LocalizeAssetsOptions {
@@ -86,7 +85,7 @@ async function processAsset(
     ) {
       throw new Error(`Unsupported asset Content-Type: ${response.contentType || "(missing)"}`);
     }
-    const digest = createHash("md5").update(response.finalUrl).digest("hex");
+    const digest = createHash("sha256").update(response.body).digest("hex");
     const assetPath = path.join(
       options.root,
       "_assets",

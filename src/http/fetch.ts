@@ -16,6 +16,11 @@ export interface FetchResourceOptions {
   maxResponseBytes?: number;
   maxRedirects?: number;
   acceptedContentTypes?: string[];
+  allowNotModified?: boolean;
+  conditional?: {
+    etag?: string;
+    lastModified?: string;
+  };
 }
 
 export interface FetchedResource {
@@ -24,6 +29,10 @@ export interface FetchedResource {
   contentType: string;
   status: number;
   customHeadersAllowed: boolean;
+  notModified: boolean;
+  etag?: string;
+  lastModified?: string;
+  vary?: string;
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
@@ -40,7 +49,8 @@ export const fetchWithEnvProxy: typeof globalThis.fetch = (input, init) =>
 
 function requestHeaders(
   options: FetchResourceOptions,
-  includeCustomHeaders: boolean
+  includeCustomHeaders: boolean,
+  includeStoredConditional: boolean
 ): Headers {
   const headers = new Headers({
     accept: options.acceptedContentTypes?.join(", ") ?? "*/*",
@@ -49,6 +59,17 @@ function requestHeaders(
   if (includeCustomHeaders) {
     for (const header of options.headers ?? []) {
       headers.append(header.name, header.value);
+    }
+  }
+  if (options.conditional) {
+    headers.delete("if-none-match");
+    headers.delete("if-modified-since");
+  }
+  if (includeStoredConditional && options.conditional) {
+    if (options.conditional.etag) {
+      headers.set("if-none-match", options.conditional.etag);
+    } else if (options.conditional.lastModified) {
+      headers.set("if-modified-since", options.conditional.lastModified);
     }
   }
   return headers;
@@ -106,7 +127,7 @@ export async function fetchResource(
     try {
       response = (await undiciFetch(url, {
         dispatcher: proxyAgent,
-        headers: requestHeaders(options, customHeadersAllowed),
+        headers: requestHeaders(options, customHeadersAllowed, redirects === 0),
         redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs)
       })) as unknown as Response;
@@ -145,6 +166,23 @@ export async function fetchResource(
       url = nextUrl;
       continue;
     }
+    const etag = response.headers.get("etag")?.trim() || undefined;
+    const lastModified = response.headers.get("last-modified")?.trim() || undefined;
+    const vary = response.headers.get("vary")?.trim() || undefined;
+    if (response.status === 304 && options.allowNotModified && redirects === 0) {
+      await response.body?.cancel().catch(() => undefined);
+      return {
+        body: new Uint8Array(),
+        finalUrl: url.href,
+        contentType: "",
+        status: response.status,
+        customHeadersAllowed,
+        notModified: true,
+        ...(etag ? { etag } : {}),
+        ...(lastModified ? { lastModified } : {}),
+        ...(vary ? { vary } : {})
+      };
+    }
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
       throw new MdhqError("FETCH_FAILED", `HTTP ${response.status} for ${url.href}`);
@@ -173,22 +211,60 @@ export async function fetchResource(
       finalUrl: url.href,
       contentType: type,
       status: response.status,
-      customHeadersAllowed
+      customHeadersAllowed,
+      notModified: false,
+      ...(etag ? { etag } : {}),
+      ...(lastModified ? { lastModified } : {}),
+      ...(vary ? { vary } : {})
     };
   }
 }
 
+export type FetchedHtml =
+  | {
+      notModified: true;
+      finalUrl: string;
+      customHeadersAllowed: boolean;
+      etag?: string;
+      lastModified?: string;
+      vary?: string;
+    }
+  | {
+      notModified: false;
+      html: string;
+      finalUrl: string;
+      customHeadersAllowed: boolean;
+      etag?: string;
+      lastModified?: string;
+      vary?: string;
+    };
+
 export async function fetchHtml(
   input: string | URL,
   options: FetchResourceOptions = {}
-): Promise<{ html: string; finalUrl: string; customHeadersAllowed: boolean }> {
+): Promise<FetchedHtml> {
   const resource = await fetchResource(input, {
     ...options,
+    allowNotModified: true,
     acceptedContentTypes: ["text/html", "application/xhtml+xml"]
   });
+  if (resource.notModified) {
+    return {
+      notModified: true,
+      finalUrl: resource.finalUrl,
+      customHeadersAllowed: resource.customHeadersAllowed,
+      ...(resource.etag ? { etag: resource.etag } : {}),
+      ...(resource.lastModified ? { lastModified: resource.lastModified } : {}),
+      ...(resource.vary ? { vary: resource.vary } : {})
+    };
+  }
   return {
+    notModified: false,
     html: new TextDecoder().decode(resource.body),
     finalUrl: resource.finalUrl,
-    customHeadersAllowed: resource.customHeadersAllowed
+    customHeadersAllowed: resource.customHeadersAllowed,
+    ...(resource.etag ? { etag: resource.etag } : {}),
+    ...(resource.lastModified ? { lastModified: resource.lastModified } : {}),
+    ...(resource.vary ? { vary: resource.vary } : {})
   };
 }

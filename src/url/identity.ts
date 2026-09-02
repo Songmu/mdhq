@@ -69,3 +69,11 @@ export function sameUrlIdentity(
     serializeUrlIdentity(createUrlIdentity(right, entryQueryKey))
   );
 }
+
+export function sameHttpTarget(left: string | URL, right: string | URL): boolean {
+  const leftUrl = parseHttpUrl(left);
+  const rightUrl = parseHttpUrl(right);
+  leftUrl.hash = "";
+  rightUrl.hash = "";
+  return leftUrl.href === rightUrl.href;
+}
