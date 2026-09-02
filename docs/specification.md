@@ -487,6 +487,33 @@ existing file. When the deterministic path already exists, identical content
 is reported as `reused`; differing content is treated as a digest collision
 and reported as an asset failure.
 
+Reusable HTTP validators are stored separately under:
+
+```text
+<root>/_assets/.cache/<sha256-of-complete-source-url>.json
+```
+
+The cache key includes the complete normalized source URL, including its query
+string. Query variants and otherwise unrelated source URLs are therefore
+validated independently, while identical response bytes still converge on the
+same content-addressed asset path.
+
+When an exact source URL is encountered again, mdhq sends its cached ETag as
+`If-None-Match`, or its cached Last-Modified value as `If-Modified-Since`. A
+`304 Not Modified` response reuses the cached asset path. A `200` response is
+hashed normally, so changed bytes produce a new immutable asset path and
+unchanged bytes reuse the existing one.
+
+Asset validators are retained only when the response has no `Vary` fields, the
+request has no Authorization or Cookie header, and the request did not
+redirect. Caller-supplied conditional headers are not forwarded as asset
+validators. Invalid cache metadata is reported as an `ASSET_CACHE_INVALID`
+warning and replaced after a successful cacheable response.
+
+When an article update receives `304 Not Modified`, asset localization is
+skipped together with HTML conversion. Images are revalidated when the article
+itself returns a new `200` response.
+
 An individual asset failure:
 
 - does not prevent the Markdown file from being saved

@@ -100,6 +100,231 @@ describe("localizeAssets", () => {
     expect(await readFile(second.assets[0]?.path ?? "")).toHaveLength(5);
   });
 
+  it("conditionally reuses the same image URL across documents", async () => {
+    let requests = 0;
+    let receivedIfNoneMatch: string | undefined;
+    const conditionalServer = createServer((request, response) => {
+      requests += 1;
+      receivedIfNoneMatch = request.headers["if-none-match"];
+      if (receivedIfNoneMatch === '"image-v1"') {
+        response.writeHead(304, { etag: '"image-v1"' }).end();
+        return;
+      }
+      response
+        .writeHead(200, {
+          "content-type": "image/png",
+          etag: '"image-v1"'
+        })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      conditionalServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = conditionalServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    try {
+      const first = await localizeAssets({
+        markdown: `![image](${sourceUrl})`,
+        imageUrls: [sourceUrl],
+        markdownPath: path.join(root, "first.example", "page.md"),
+        root,
+        baseUrl: sourceUrl,
+        warn: () => undefined
+      });
+      const second = await localizeAssets({
+        markdown: `![image](${sourceUrl})`,
+        imageUrls: [sourceUrl],
+        markdownPath: path.join(root, "second.example", "page.md"),
+        root,
+        baseUrl: sourceUrl,
+        warn: () => undefined
+      });
+      expect(requests).toBe(2);
+      expect(receivedIfNoneMatch).toBe('"image-v1"');
+      expect(first.assets[0]?.status).toBe("saved");
+      expect(second.assets[0]?.status).toBe("reused");
+      expect(second.assets[0]?.path).toBe(first.assets[0]?.path);
+    } finally {
+      await new Promise<void>((resolve) =>
+        conditionalServer.close(() => resolve())
+      );
+    }
+  });
+
+  it("keeps query variants as separate validator cache entries", async () => {
+    const received: Array<{ url: string; etag?: string }> = [];
+    const queryServer = createServer((request, response) => {
+      received.push({
+        url: request.url ?? "",
+        ...(request.headers["if-none-match"]
+          ? { etag: request.headers["if-none-match"] }
+          : {})
+      });
+      const etag = request.url === "/image.png?v=1" ? '"v1"' : '"v2"';
+      if (request.headers["if-none-match"] === etag) {
+        response.writeHead(304, { etag }).end();
+        return;
+      }
+      response
+        .writeHead(200, { "content-type": "image/png", etag })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      queryServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = queryServer.address() as AddressInfo;
+    const firstUrl = `http://127.0.0.1:${address.port}/image.png?v=1`;
+    const secondUrl = `http://127.0.0.1:${address.port}/image.png?v=2`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const localize = (sourceUrl: string) =>
+      localizeAssets({
+        markdown: `![image](${sourceUrl})`,
+        imageUrls: [sourceUrl],
+        markdownPath: path.join(root, "example.com", "page.md"),
+        root,
+        baseUrl: sourceUrl,
+        warn: () => undefined
+      });
+    try {
+      const first = await localize(firstUrl);
+      const second = await localize(secondUrl);
+      const repeatedFirst = await localize(firstUrl);
+      expect(received).toEqual([
+        { url: "/image.png?v=1" },
+        { url: "/image.png?v=2" },
+        { url: "/image.png?v=1", etag: '"v1"' }
+      ]);
+      expect(second.assets[0]?.path).toBe(first.assets[0]?.path);
+      expect(repeatedFirst.assets[0]?.status).toBe("reused");
+    } finally {
+      await new Promise<void>((resolve) => queryServer.close(() => resolve()));
+    }
+  });
+
+  it("does not reuse validators for credentialed images", async () => {
+    const received: Array<{ authorization?: string; etag?: string }> = [];
+    const privateServer = createServer((request, response) => {
+      received.push({
+        ...(request.headers.authorization
+          ? { authorization: request.headers.authorization }
+          : {}),
+        ...(request.headers["if-none-match"]
+          ? { etag: request.headers["if-none-match"] }
+          : {})
+      });
+      response
+        .writeHead(200, {
+          "content-type": "image/png",
+          etag: '"private"'
+        })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      privateServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = privateServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const options = {
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl: sourceUrl,
+      http: { headers: [{ name: "Authorization", value: "secret" }] },
+      warn: () => undefined
+    };
+    try {
+      await localizeAssets(options);
+      await localizeAssets(options);
+      expect(received).toEqual([
+        { authorization: "secret" },
+        { authorization: "secret" }
+      ]);
+    } finally {
+      await new Promise<void>((resolve) =>
+        privateServer.close(() => resolve())
+      );
+    }
+  });
+
+  it("does not reuse validators for responses with Vary fields", async () => {
+    const receivedEtags: Array<string | undefined> = [];
+    const varyingServer = createServer((request, response) => {
+      receivedEtags.push(request.headers["if-none-match"]);
+      response
+        .writeHead(200, {
+          "content-type": "image/png",
+          etag: '"varying"',
+          vary: "Accept-Language"
+        })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      varyingServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = varyingServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const options = {
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl: sourceUrl,
+      warn: () => undefined
+    };
+    try {
+      await localizeAssets(options);
+      await localizeAssets(options);
+      expect(receivedEtags).toEqual([undefined, undefined]);
+    } finally {
+      await new Promise<void>((resolve) =>
+        varyingServer.close(() => resolve())
+      );
+    }
+  });
+
+  it("drops a stale validator when a later response is not cacheable", async () => {
+    const receivedEtags: Array<string | undefined> = [];
+    let requestCount = 0;
+    const changingServer = createServer((request, response) => {
+      requestCount += 1;
+      receivedEtags.push(request.headers["if-none-match"]);
+      response
+        .writeHead(200, {
+          "content-type": "image/png",
+          ...(requestCount === 1 ? { etag: '"initial"' } : {})
+        })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      changingServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = changingServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const options = {
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl: sourceUrl,
+      warn: () => undefined
+    };
+    try {
+      await localizeAssets(options);
+      await localizeAssets(options);
+      await localizeAssets(options);
+      expect(receivedEtags).toEqual([undefined, '"initial"', undefined]);
+    } finally {
+      await new Promise<void>((resolve) =>
+        changingServer.close(() => resolve())
+      );
+    }
+  });
+
   it("accepts a jpeg URL when Content-Type is missing", async () => {
     const jpegServer = createServer((_request, response) => {
       response.writeHead(200).end(Buffer.from([0xff, 0xd8, 0xff]));
