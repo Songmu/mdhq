@@ -2,6 +2,7 @@ import { Defuddle } from "defuddle/node";
 import { MdhqError } from "../errors.js";
 import { normalizeSourceDate } from "../date.js";
 import type { ConvertedPage, ConvertHtmlOptions, PageMetadata } from "../types.js";
+import { extractPublishedDate } from "./extract-published.js";
 import { extractUpdatedDate } from "./extract-updated.js";
 
 function nonempty(value: string | undefined): string | undefined {
@@ -21,6 +22,7 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
     const updated = normalizeSourceDate(
       extractUpdatedDate(options.html, url.href)
     );
+    const publishedFromMetadata = extractPublishedDate(options.html, url.href);
     const result = await Defuddle(options.html, url.href, {
       ...options.defuddle,
       markdown: true,
@@ -35,7 +37,9 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
       title: nonempty(result.title),
       description: nonempty(result.description),
       author: nonempty(result.author),
-      published: normalizeSourceDate(nonempty(result.published)),
+      published:
+        normalizeSourceDate(publishedFromMetadata) ??
+        normalizeSourceDate(nonempty(result.published)),
       updated,
       site: nonempty(result.site),
       domain: nonempty(result.domain),

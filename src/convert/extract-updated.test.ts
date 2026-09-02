@@ -24,6 +24,31 @@ describe("extractUpdatedDate", () => {
     ).toBe("2026-08-31T12:34:56+09:00");
   });
 
+  it("accepts a non-string dateModified value (JSON-LD @value object)", () => {
+    expect(
+      extractUpdatedDate(
+        `<script type="application/ld+json">${JSON.stringify({
+          "@type": "Article",
+          dateModified: {
+            "@value": "2026-08-31T12:34:56Z",
+            "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
+          }
+        })}</script>`
+      )
+    ).toBe("2026-08-31T12:34:56Z");
+  });
+
+  it("accepts a numeric Unix epoch dateModified value", () => {
+    expect(
+      extractUpdatedDate(
+        `<script type="application/ld+json">${JSON.stringify({
+          "@type": "Article",
+          dateModified: 1_693_672_496
+        })}</script>`
+      )
+    ).toBe("2023-09-02T16:34:56Z");
+  });
+
   it("skips an invalid JSON-LD date and uses the next valid source", () => {
     expect(
       extractUpdatedDate(`<html><head>

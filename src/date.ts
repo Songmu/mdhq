@@ -1,6 +1,18 @@
 const RFC3339_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const RFC3339_DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|([+-])(\d{2}):(\d{2}))$/iu;
+const COMPACT_DATE = /^(\d{4})(\d{2})(\d{2})$/u;
+const INTEGER_STRING = /^[+-]?\d+$/u;
+// A space separator is accepted only alongside an explicit zone; a bare
+// space-separated local date-time without a zone is handled by
+// LOCAL_DATE_TIME below and reduced to a date-only value.
+const ZONED_DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})$/iu;
+const LOCAL_DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/u;
+const MONTH_DAY_YEAR = /^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})$/u;
+const DAY_MONTH_YEAR = /^(\d{1,2})\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})$/u;
+const MAX_SAFE_DATE_MS = 8_640_000_000_000_000n;
 const IMF_FIXDATE =
   /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/u;
 const RFC850_DATE =
@@ -13,6 +25,25 @@ const MONTHS = new Map(
     (month, index) => [month, index + 1]
   )
 );
+const MONTH_FULL_NAMES = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december"
+];
+const MONTH_NAME_TO_NUMBER = new Map<string, number>();
+for (const [index, name] of MONTH_FULL_NAMES.entries()) {
+  MONTH_NAME_TO_NUMBER.set(name, index + 1);
+  MONTH_NAME_TO_NUMBER.set(name.slice(0, 3), index + 1);
+}
 const SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const LONG_WEEKDAYS = [
   "Sunday",
@@ -201,10 +232,160 @@ export function formatLocalRfc3339(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${sign}${pad(hours)}:${pad(minutes)}`;
 }
 
-export function normalizeSourceDate(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) {
+function monthNumber(name: string): number | undefined {
+  return MONTH_NAME_TO_NUMBER.get(name.toLowerCase());
+}
+
+function parseZoneOffset(zone: string): { canonical: string } | undefined {
+  if (zone.toUpperCase() === "Z") {
+    return { canonical: "Z" };
+  }
+  const match = /^([+-])(\d{2}):?(\d{2})$/u.exec(zone);
+  if (!match) {
     return undefined;
+  }
+  const sign = capture(match, 1);
+  const hour = Number(capture(match, 2));
+  const minute = Number(capture(match, 3));
+  if (hour > 23 || minute > 59) {
+    return undefined;
+  }
+  return { canonical: `${sign}${capture(match, 2)}:${capture(match, 3)}` };
+}
+
+function formatZonedDateTime(match: RegExpExecArray): string | undefined {
+  const year = Number(capture(match, 1));
+  const month = Number(capture(match, 2));
+  const day = Number(capture(match, 3));
+  const hour = Number(capture(match, 4));
+  const minute = Number(capture(match, 5));
+  const second = Number(capture(match, 6));
+  if (!validCalendarDate(year, month, day) || !validTime(hour, minute, second)) {
+    return undefined;
+  }
+  const zone = parseZoneOffset(capture(match, 7));
+  if (!zone) {
+    return undefined;
+  }
+  return `${capture(match, 1)}-${capture(match, 2)}-${capture(match, 3)}T${capture(match, 4)}:${capture(match, 5)}:${capture(match, 6)}${zone.canonical}`;
+}
+
+function formatLocalDateOnly(match: RegExpExecArray): string | undefined {
+  const year = Number(capture(match, 1));
+  const month = Number(capture(match, 2));
+  const day = Number(capture(match, 3));
+  const hour = Number(capture(match, 4));
+  const minute = Number(capture(match, 5));
+  const second = Number(capture(match, 6));
+  if (!validCalendarDate(year, month, day) || !validTime(hour, minute, second)) {
+    return undefined;
+  }
+  // A local date-time without an explicit UTC offset never establishes a
+  // reliable instant: reduce it to the calendar date it unambiguously names
+  // instead of inventing an offset.
+  return `${capture(match, 1)}-${capture(match, 2)}-${capture(match, 3)}`;
+}
+
+function formatNamedMonthDate(
+  monthName: string,
+  dayValue: string,
+  yearValue: string
+): string | undefined {
+  const month = monthNumber(monthName);
+  if (!month) {
+    return undefined;
+  }
+  const day = Number(dayValue);
+  const year = Number(yearValue);
+  if (!validCalendarDate(year, month, day)) {
+    return undefined;
+  }
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${yearValue}-${pad(month)}-${pad(day)}`;
+}
+
+function digitLength(value: bigint): number {
+  return (value < 0n ? -value : value).toString().length;
+}
+
+/**
+ * Infers the epoch unit (seconds, milliseconds, microseconds, or
+ * nanoseconds) from the number of significant digits and returns the
+ * equivalent millisecond count. Values with too few digits to plausibly be a
+ * modern timestamp, or too many digits to be any of the four supported
+ * units, are rejected so arbitrary numeric identifiers are not treated as
+ * dates.
+ */
+function epochToMilliseconds(value: bigint): bigint | undefined {
+  const digits = digitLength(value);
+  if (digits < 6) {
+    return undefined;
+  }
+  if (digits <= 10) {
+    return value * 1000n;
+  }
+  if (digits <= 13) {
+    return value;
+  }
+  if (digits <= 16) {
+    return value / 1000n;
+  }
+  if (digits <= 19) {
+    return value / 1_000_000n;
+  }
+  return undefined;
+}
+
+function formatEpochMilliseconds(ms: bigint): string | undefined {
+  if (ms < -MAX_SAFE_DATE_MS || ms > MAX_SAFE_DATE_MS) {
+    return undefined;
+  }
+  const date = new Date(Number(ms));
+  if (Number.isNaN(date.getTime()) || date.getUTCFullYear() < 0 || date.getUTCFullYear() > 9999) {
+    return undefined;
+  }
+  return date.toISOString().replace(/\.\d{3}Z$/u, "Z");
+}
+
+function normalizeEpochBigInt(value: bigint): string | undefined {
+  const ms = epochToMilliseconds(value);
+  return ms === undefined ? undefined : formatEpochMilliseconds(ms);
+}
+
+function normalizeEpochNumber(value: number): string | undefined {
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    return undefined;
+  }
+  // Route through the string path so a compact YYYYMMDD-shaped integer (e.g.
+  // 20260831) is recognized as a date before being treated as an epoch, the
+  // same as an equivalent numeric string.
+  return normalizeSourceDateString(String(value));
+}
+
+function normalizeEpochString(trimmed: string): string | undefined {
+  const unsigned = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+  try {
+    return normalizeEpochBigInt(BigInt(unsigned));
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeSourceDateString(trimmed: string): string | undefined {
+  const compactMatch = COMPACT_DATE.exec(trimmed);
+  if (compactMatch) {
+    if (
+      validCalendarDate(
+        Number(compactMatch[1]),
+        Number(compactMatch[2]),
+        Number(compactMatch[3])
+      )
+    ) {
+      return `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}`;
+    }
+  }
+  if (INTEGER_STRING.test(trimmed)) {
+    return normalizeEpochString(trimmed);
   }
   const dateMatch = RFC3339_DATE.exec(trimmed);
   if (dateMatch) {
@@ -216,15 +397,73 @@ export function normalizeSourceDate(value: string | undefined): string | undefin
       ? trimmed
       : undefined;
   }
-  const match = RFC3339_DATE_TIME.exec(trimmed);
-  if (!match || parseRfc3339(trimmed) === undefined) {
+  const zonedMatch = ZONED_DATE_TIME.exec(trimmed);
+  if (zonedMatch) {
+    return formatZonedDateTime(zonedMatch);
+  }
+  const localMatch = LOCAL_DATE_TIME.exec(trimmed);
+  if (localMatch) {
+    return formatLocalDateOnly(localMatch);
+  }
+  const monthDayYear = MONTH_DAY_YEAR.exec(trimmed);
+  if (monthDayYear) {
+    return formatNamedMonthDate(
+      capture(monthDayYear, 1),
+      capture(monthDayYear, 2),
+      capture(monthDayYear, 3)
+    );
+  }
+  const dayMonthYear = DAY_MONTH_YEAR.exec(trimmed);
+  if (dayMonthYear) {
+    return formatNamedMonthDate(
+      capture(dayMonthYear, 2),
+      capture(dayMonthYear, 1),
+      capture(dayMonthYear, 3)
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Normalizes heterogeneous source-article date metadata (published/updated)
+ * into exactly one of:
+ * - `YYYY-MM-DD`, when only a calendar date is reliably known, or
+ * - an RFC 3339 date-time with an explicit `Z` or numeric offset and
+ *   second-level precision.
+ *
+ * Accepts strings, finite integer numbers (interpreted as Unix epoch
+ * seconds/milliseconds/microseconds/nanoseconds based on magnitude), JSON-LD
+ * value objects (`{"@value": ..., "@type": ...}`), and arrays of candidates
+ * (the first value that normalizes successfully is used). Unsupported or
+ * ambiguous shapes return `undefined` instead of throwing or guessing.
+ */
+export function normalizeSourceDate(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
     return undefined;
   }
-  const zone =
-    match[7]?.toUpperCase() === "Z"
-      ? "Z"
-      : `${match[8]}${match[9]}:${match[10]}`;
-  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}${zone}`;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = normalizeSourceDate(item);
+      if (normalized !== undefined) {
+        return normalized;
+      }
+    }
+    return undefined;
+  }
+  if (typeof value === "number") {
+    return normalizeEpochNumber(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? normalizeSourceDateString(trimmed) : undefined;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if ("@value" in record) {
+      return normalizeSourceDate(record["@value"]);
+    }
+  }
+  return undefined;
 }
 
 export function isRfc3339DateTime(value: string | undefined): value is string {

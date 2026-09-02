@@ -572,14 +572,59 @@ local-offset RFC 3339 timestamps with second-level precision. A valid existing
 `created` string is preserved verbatim during an update, including its
 original UTC offset.
 
-`published` and `updated` are source-article metadata. Instants are normalized
-to RFC 3339 with second precision; genuinely date-only values remain
-`YYYY-MM-DD`. `updated` is extracted from Schema.org `dateModified`, article
-or Open Graph modification metadata, or `itemprop="dateModified"`. Schema.org
-selection prefers an entity linked to the current page through `url`, `@id`,
-`mainEntity`, or `mainEntityOfPage`; concrete Article and Posting types rank
-ahead of generic WebPage and CreativeWork fallbacks, independently of graph
-order.
+`published` and `updated` are source-article metadata, normalized through the
+same rules. `updated` is extracted from Schema.org `dateModified`,
+`article:modified_time` / `og:updated_time` meta tags, or
+`itemprop="dateModified"` microdata. `published` is extracted the same way
+from Schema.org `datePublished`, `article:published_time` /
+`og:published_time` meta tags, or `itemprop="datePublished"` microdata, with
+Defuddle's own (string-only) extraction used as a fallback when no such
+metadata is present. Schema.org selection prefers an entity linked to the
+current page through `url`, `@id`, `mainEntity`, or `mainEntityOfPage`;
+concrete Article and Posting types rank ahead of generic WebPage and
+CreativeWork fallbacks, independently of graph order.
+
+Source-date normalization accepts the following inputs and, for each, always
+produces exactly one of two canonical forms: `YYYY-MM-DD` when only a
+calendar date is reliably known, or an RFC 3339 date-time with an explicit
+`Z` or numeric offset and second-level precision (fractional seconds are
+dropped):
+
+- `YYYY-MM-DD`, and compact `YYYYMMDD` (recognized as a date before being
+  considered as a numeric epoch).
+- RFC 3339 date-times with an explicit `Z` or numeric UTC offset. A space is
+  accepted instead of `T` only when an explicit offset is also present. An
+  offset without a colon (`+0900`) is accepted and normalized to the colon
+  form (`+09:00`). A supplied offset is preserved rather than converted to
+  UTC.
+- Local date-times without any UTC offset. Since no offset can be inferred
+  reliably, these are reduced to their `YYYY-MM-DD` calendar date instead of
+  inventing an offset such as `+00:00`.
+- Unambiguous English month-name date text, such as `August 31, 2026` or
+  `31 August 2026`, represented as `YYYY-MM-DD`.
+- Unix epoch values, as JSON numbers or numeric strings, in seconds,
+  milliseconds, microseconds, or nanoseconds. The unit is inferred from the
+  number of significant digits (roughly 6-10 digits for seconds, 11-13 for
+  milliseconds, 14-16 for microseconds, and 17-19 for nanoseconds); values
+  outside of these ranges are rejected instead of being guessed at, so
+  arbitrary numeric identifiers are not mistaken for dates. Microsecond and
+  nanosecond values are scaled using integer arithmetic to avoid floating-
+  point precision loss. Epoch-derived output always uses `Z`.
+- JSON-LD value objects (`{"@value": "...", "@type": "...#dateTime"}`): the
+  `@value` is normalized recursively regardless of `@type`.
+- JSON-LD arrays: candidates are tried in their original order and the first
+  one that normalizes successfully is used.
+
+mdhq never guesses at ambiguous input: slash-separated numeric dates (such as
+`09/02/2026`), unrecognized timezone abbreviations, and the machine's local
+timezone are all rejected rather than assumed. Invalid calendar dates and
+times (such as February 30 or an hour of 24) are rejected outright instead of
+relying on JavaScript `Date` rollover. Malformed or unsupported JSON-LD
+shapes normalize to `undefined` rather than throwing.
+
+This normalization is unrelated to `last_modified`, which remains an
+HTTP-protocol-specific conversion of the `Last-Modified` response header to
+RFC 3339 UTC.
 
 The Markdown body uses LF line endings, has trailing whitespace removed, and
 ends with exactly one LF. `content_digest` is calculated from the UTF-8 bytes
