@@ -60,4 +60,18 @@ describe("convertHtml", () => {
     expect(result.metadata.published).toBe("2023-09-02T16:34:56Z");
   });
 
+  it("keeps an explicit midnight timestamp even when the same date is mentioned in the body", async () => {
+    const result = await convertHtml({
+      html: `<!doctype html><html><head><title>Example</title></head><body>
+        <article>
+          <p>Published on August 31, 2026.</p>
+          <time datetime="2026-08-31T00:00:00+00:00">August 31, 2026</time>
+        </article>
+      </body></html>`,
+      url: "https://example.com/article",
+      defuddle: { useAsync: false }
+    });
+    expect(result.metadata.published).toBe("2026-08-31T00:00:00+00:00");
+  });
+
 });
