@@ -264,16 +264,29 @@ function parseJsonLd(source: string): unknown {
   let inString = false;
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index];
-    if (character === '"' && source[index - 1] !== "\\") {
-      inString = !inString;
+    if (character === '"') {
+      let backslashes = 0;
+      for (let previous = index - 1; previous >= 0 && source[previous] === "\\"; previous -= 1) {
+        backslashes += 1;
+      }
+      if (backslashes % 2 === 0) {
+        inString = !inString;
+      }
       result += character;
       continue;
     }
-    if (!inString && (character === "-" || /\d/u.test(character))) {
-      const match = source.slice(index).match(/^-?\d+(?![\d.eE])/u);
+    if (inString) {
+      result += character;
+      continue;
+    }
+    if (character === "-" || /\d/u.test(character)) {
+      const match = source
+        .slice(index)
+        .match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/u);
       if (match) {
-        result += `"${match[0]}"`;
-        index += match[0].length - 1;
+        const token = match[0]!;
+        result += /^-?\d+$/u.test(token) ? `"${token}"` : token;
+        index += token.length - 1;
         continue;
       }
     }

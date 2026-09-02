@@ -47,4 +47,17 @@ describe("convertHtml", () => {
     expect(result.metadata.published).toBe("2023-09-02T16:34:56Z");
   });
 
+  it("preserves JSON-LD decimal numbers while extracting dates", async () => {
+    const result = await convertHtml({
+      html: `<!doctype html><html><head>
+        <script type="application/ld+json">
+          {"@type":"NewsArticle","ratingValue":4.5,"datePublished":1693672496}
+        </script>
+      </head><body><article><p>Published article content.</p></article></body></html>`,
+      url: "https://example.com/article",
+      defuddle: { useAsync: false }
+    });
+    expect(result.metadata.published).toBe("2023-09-02T16:34:56Z");
+  });
+
 });
