@@ -362,12 +362,6 @@ async function getPageAttempt(
       : etag || reusableLastModified
         ? { vary: [] }
         : {}),
-    ...(localized.representativeImage
-      ? { image: localized.representativeImage }
-      : {}),
-    ...(localized.representativeImageSource
-      ? { imageSource: localized.representativeImageSource }
-      : {}),
     ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
   });
   const content = serializeDocument(frontmatter, localized.markdown);
