@@ -496,7 +496,7 @@ Reusable HTTP validators are stored separately under:
 The cache key includes the complete normalized source URL, including its query
 string. Query variants and otherwise unrelated source URLs are therefore
 validated independently, while identical response bytes still converge on the
-same content-addressed asset path.
+same content-addressed asset path when they select the same extension.
 
 When an exact source URL is encountered again, mdhq sends its cached ETag as
 `If-None-Match`, or its cached Last-Modified value as `If-Modified-Since`. A

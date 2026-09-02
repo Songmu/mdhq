@@ -29,6 +29,7 @@ export interface FetchedResource {
   contentType: string;
   status: number;
   customHeadersAllowed: boolean;
+  redirected: boolean;
   notModified: boolean;
   etag?: string;
   lastModified?: string;
@@ -179,6 +180,7 @@ export async function fetchResource(
         contentType: "",
         status: response.status,
         customHeadersAllowed,
+        redirected: redirects > 0,
         notModified: true,
         ...(etag ? { etag } : {}),
         ...(lastModified ? { lastModified } : {}),
@@ -215,6 +217,7 @@ export async function fetchResource(
       contentType: type,
       status: response.status,
       customHeadersAllowed,
+      redirected: redirects > 0,
       notModified: false,
       ...(etag ? { etag } : {}),
       ...(lastModified ? { lastModified } : {}),

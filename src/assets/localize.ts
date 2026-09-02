@@ -201,6 +201,25 @@ function serializeAssetCache(entry: AssetCacheEntry): string {
   return `${JSON.stringify(entry, null, 2)}\n`;
 }
 
+function sameCacheEntry(
+  left: AssetCacheEntry | undefined,
+  right: AssetCacheEntry | undefined
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.sourceUrl === right.sourceUrl &&
+    left.finalUrl === right.finalUrl &&
+    left.assetFile === right.assetFile &&
+    left.contentType === right.contentType &&
+    left.etag === right.etag &&
+    left.lastModified === right.lastModified &&
+    left.vary.length === right.vary.length &&
+    left.vary.every((name, index) => name === right.vary[index])
+  );
+}
+
 async function removeAssetCache(cachePath: string): Promise<void> {
   try {
     await unlink(cachePath);
@@ -249,41 +268,51 @@ async function processAsset(
       ...(sameOrigin ? {} : { headers: [] })
     };
     const cachePath = cachePathForUrl(options.root, sourceUrl);
-    return await withDestinationLock(
+    const cached = await withDestinationLock(
       cachePath,
-      async () => {
-        const cached = await readAssetCache(cachePath, sourceUrl);
-        cacheWarning = cached.warning;
-        const cachedAsset = cached.entry
-          ? await existingCachedAsset(cached.entry, options.root)
-          : undefined;
-        const validatorsReusable =
-          cached.entry !== undefined &&
-          cachedAsset !== undefined &&
-          cached.entry.finalUrl === sourceUrl &&
-          cached.entry.vary.length === 0 &&
-          !hasCredentialHeaders(http.headers) &&
-          !requestHasNoStore(http.headers);
-        const conditional = validatorsReusable
-          ? cached.entry?.etag
-            ? { etag: cached.entry.etag }
-            : cached.entry?.lastModified
-              ? { lastModified: cached.entry.lastModified }
-              : undefined
-          : undefined;
-        const response = await fetchResource(sourceUrl, {
-          ...http,
-          conditional: conditional ?? {},
-          ...(conditional ? { allowNotModified: true } : {})
-        });
-        if (response.notModified) {
-          if (!cached.entry || !cachedAsset || !conditional) {
-            throw new Error(`HTTP 304 without a matching cached asset: ${sourceUrl}`);
+      () => readAssetCache(cachePath, sourceUrl),
+      options.root
+    );
+    cacheWarning = cached.warning;
+    const cachedAsset = cached.entry
+      ? await existingCachedAsset(cached.entry, options.root)
+      : undefined;
+    const validatorsReusable =
+      cached.entry !== undefined &&
+      cachedAsset !== undefined &&
+      cached.entry.finalUrl === sourceUrl &&
+      cached.entry.vary.length === 0 &&
+      !hasCredentialHeaders(http.headers) &&
+      !requestHasNoStore(http.headers);
+    const conditional = validatorsReusable
+      ? cached.entry?.etag
+        ? { etag: cached.entry.etag }
+        : cached.entry?.lastModified
+          ? { lastModified: cached.entry.lastModified }
+          : undefined
+      : undefined;
+    const response = await fetchResource(sourceUrl, {
+      ...http,
+      conditional: conditional ?? {},
+      ...(conditional ? { allowNotModified: true } : {})
+    });
+    if (response.notModified) {
+      const cachedEntry = cached.entry;
+      if (!cachedEntry || !cachedAsset || !conditional) {
+        throw new Error(`HTTP 304 without a matching cached asset: ${sourceUrl}`);
+      }
+      const vary = response.vary ? varyNames(response.vary) : cachedEntry.vary;
+      await withDestinationLock(
+        cachePath,
+        async () => {
+          const current = await readAssetCache(cachePath, sourceUrl);
+          cacheWarning ??= current.warning;
+          if (!sameCacheEntry(current.entry, cachedEntry)) {
+            return;
           }
-          const vary = response.vary ? varyNames(response.vary) : cached.entry.vary;
           if (vary.length === 0 && !hasNoStore(response.cacheControl)) {
             const refreshed: AssetCacheEntry = {
-              ...cached.entry,
+              ...cachedEntry,
               ...(response.etag ? { etag: response.etag } : {}),
               ...(response.lastModified
                 ? { lastModified: response.lastModified }
@@ -293,46 +322,57 @@ async function processAsset(
             await replaceFileAtomic(cachePath, serializeAssetCache(refreshed), {
               root: options.root
             });
-          } else if (cached.writable) {
+          } else if (current.writable) {
             await removeAssetCache(cachePath);
           }
-          const replacement = path
-            .relative(path.dirname(options.markdownPath), cachedAsset)
-            .split(path.sep)
-            .join("/");
-          return {
-            asset: {
-              sourceUrl,
-              finalUrl: cached.entry.finalUrl,
-              path: cachedAsset,
-              status: "reused"
-            },
-            replacement,
-            representative: sourceUrl === representativeImage,
-            ...(cacheWarning ? { warnings: [cacheWarning] } : {})
-          };
-        }
+        },
+        options.root
+      );
+      const replacement = path
+        .relative(path.dirname(options.markdownPath), cachedAsset)
+        .split(path.sep)
+        .join("/");
+      return {
+        asset: {
+          sourceUrl,
+          finalUrl: cachedEntry.finalUrl,
+          path: cachedAsset,
+          status: "reused"
+        },
+        replacement,
+        representative: sourceUrl === representativeImage,
+        ...(cacheWarning ? { warnings: [cacheWarning] } : {})
+      };
+    }
 
-        const urlExtension = path.posix.extname(new URL(response.finalUrl).pathname).toLowerCase();
-        if (
-          (response.contentType && !response.contentType.startsWith("image/")) ||
-          (!response.contentType && !IMAGE_EXTENSIONS.has(urlExtension))
-        ) {
-          throw new Error(`Unsupported asset Content-Type: ${response.contentType || "(missing)"}`);
+    const urlExtension = path.posix.extname(new URL(response.finalUrl).pathname).toLowerCase();
+    if (
+      (response.contentType && !response.contentType.startsWith("image/")) ||
+      (!response.contentType && !IMAGE_EXTENSIONS.has(urlExtension))
+    ) {
+      throw new Error(`Unsupported asset Content-Type: ${response.contentType || "(missing)"}`);
+    }
+    const digest = createHash("sha256").update(response.body).digest("hex");
+    const assetFile = `${digest}${assetExtension(response.contentType, response.finalUrl)}`;
+    const assetPath = path.join(options.root, "_assets", assetFile);
+    const status = await saveAsset(assetPath, response.body, options.root);
+    const vary = varyNames(response.vary);
+    const cacheable =
+      !response.redirected &&
+      vary.length === 0 &&
+      !hasCredentialHeaders(http.headers) &&
+      !requestHasNoStore(http.headers) &&
+      !hasNoStore(response.cacheControl) &&
+      Boolean(response.etag || response.lastModified);
+    await withDestinationLock(
+      cachePath,
+      async () => {
+        const current = await readAssetCache(cachePath, sourceUrl);
+        cacheWarning ??= current.warning;
+        if (!sameCacheEntry(current.entry, cached.entry)) {
+          return;
         }
-        const digest = createHash("sha256").update(response.body).digest("hex");
-        const assetFile = `${digest}${assetExtension(response.contentType, response.finalUrl)}`;
-        const assetPath = path.join(options.root, "_assets", assetFile);
-        const status = await saveAsset(assetPath, response.body, options.root);
-        const vary = varyNames(response.vary);
-        const cacheable =
-          response.finalUrl === sourceUrl &&
-          vary.length === 0 &&
-          !hasCredentialHeaders(http.headers) &&
-          !requestHasNoStore(http.headers) &&
-          !hasNoStore(response.cacheControl) &&
-          Boolean(response.etag || response.lastModified);
-        if (cacheable && cached.writable) {
+        if (cacheable && current.writable) {
           const entry: AssetCacheEntry = {
             version: ASSET_CACHE_VERSION,
             sourceUrl,
@@ -349,30 +389,30 @@ async function processAsset(
             root: options.root
           });
         } else if (
-          cached.writable &&
+          current.writable &&
           !hasCredentialHeaders(http.headers) &&
           !requestHasNoStore(http.headers)
         ) {
           await removeAssetCache(cachePath);
         }
-        const replacement = path
-          .relative(path.dirname(options.markdownPath), assetPath)
-          .split(path.sep)
-          .join("/");
-        return {
-          asset: {
-            sourceUrl,
-            finalUrl: response.finalUrl,
-            path: assetPath,
-            status
-          },
-          replacement,
-          representative: sourceUrl === representativeImage,
-          ...(cacheWarning ? { warnings: [cacheWarning] } : {})
-        };
       },
       options.root
     );
+    const replacement = path
+      .relative(path.dirname(options.markdownPath), assetPath)
+      .split(path.sep)
+      .join("/");
+    return {
+      asset: {
+        sourceUrl,
+        finalUrl: response.finalUrl,
+        path: assetPath,
+        status
+      },
+      replacement,
+      representative: sourceUrl === representativeImage,
+      ...(cacheWarning ? { warnings: [cacheWarning] } : {})
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -148,6 +148,95 @@ describe("localizeAssets", () => {
     } finally {
       await new Promise<void>((resolve) =>
         conditionalServer.close(() => resolve())
+      );
+    }
+  });
+
+  it("does not hold the cache lock while fetching an image", async () => {
+    const pending: ServerResponse[] = [];
+    const concurrentServer = createServer((_request, response) => {
+      pending.push(response);
+      if (pending.length === 2) {
+        for (const item of pending) {
+          item
+            .writeHead(200, {
+              "content-type": "image/png",
+              etag: '"shared"'
+            })
+            .end(imageBody);
+        }
+      }
+    });
+    await new Promise<void>((resolve) =>
+      concurrentServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = concurrentServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    try {
+      const results = await Promise.all(
+        ["first.example", "second.example"].map((host) =>
+          localizeAssets({
+            markdown: `![image](${sourceUrl})`,
+            imageUrls: [sourceUrl],
+            markdownPath: path.join(root, host, "page.md"),
+            root,
+            baseUrl: sourceUrl,
+            warn: () => undefined
+          })
+        )
+      );
+      expect(results.every((result) => result.assets[0]?.status !== "failed")).toBe(true);
+      expect(results[0]?.assets[0]?.path).toBe(results[1]?.assets[0]?.path);
+    } finally {
+      await new Promise<void>((resolve) =>
+        concurrentServer.close(() => resolve())
+      );
+    }
+  });
+
+  it("does not cache validators after a redirect returns to the source URL", async () => {
+    const receivedEtags: Array<string | undefined> = [];
+    let sourceRequests = 0;
+    const redirectServer = createServer((request, response) => {
+      if (request.url === "/step") {
+        response.writeHead(302, { location: "/image.png" }).end();
+        return;
+      }
+      sourceRequests += 1;
+      receivedEtags.push(request.headers["if-none-match"]);
+      if (sourceRequests === 1) {
+        response.writeHead(302, { location: "/step" }).end();
+        return;
+      }
+      response
+        .writeHead(200, {
+          "content-type": "image/png",
+          etag: '"redirected"'
+        })
+        .end(imageBody);
+    });
+    await new Promise<void>((resolve) =>
+      redirectServer.listen(0, "127.0.0.1", resolve)
+    );
+    const address = redirectServer.address() as AddressInfo;
+    const sourceUrl = `http://127.0.0.1:${address.port}/image.png`;
+    const root = await mkdtemp(path.join(os.tmpdir(), "mdhq-assets-"));
+    const options = {
+      markdown: `![image](${sourceUrl})`,
+      imageUrls: [sourceUrl],
+      markdownPath: path.join(root, "example.com", "page.md"),
+      root,
+      baseUrl: sourceUrl,
+      warn: () => undefined
+    };
+    try {
+      await localizeAssets(options);
+      await localizeAssets(options);
+      expect(receivedEtags).toEqual([undefined, undefined, undefined]);
+    } finally {
+      await new Promise<void>((resolve) =>
+        redirectServer.close(() => resolve())
       );
     }
   });
