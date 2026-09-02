@@ -339,6 +339,11 @@ describe("getPage", () => {
     expect(parsed?.frontmatter).not.toHaveProperty("content_digest");
     expect(parsed?.frontmatter).not.toHaveProperty("vary");
     expect(parsed?.frontmatter).not.toHaveProperty("type");
+    expect(parsed?.frontmatter).not.toHaveProperty("image");
+    expect(parsed?.frontmatter).not.toHaveProperty("image_source");
+    expect(parsed?.frontmatter).not.toHaveProperty("site");
+    expect(parsed?.frontmatter).not.toHaveProperty("domain");
+    expect(parsed?.frontmatter).not.toHaveProperty("word_count");
     expect(parsed?.frontmatter.created).toBe(parsed?.frontmatter.modified);
     expect(document.endsWith("\n")).toBe(true);
 
@@ -366,7 +371,7 @@ describe("getPage", () => {
     });
     const document = await readFile(result.path, "utf8");
     expect(result.assets).toEqual([]);
-    expect(document).toContain(`image: ${baseUrl}/image.png`);
+    expect(document).not.toContain("image:");
     expect(document).toContain(`![Example](${baseUrl}/image.png)`);
     await expect(access(path.join(root, "_assets"))).rejects.toMatchObject({
       code: "ENOENT"
@@ -447,7 +452,7 @@ describe("getPage", () => {
     expect(document).not.toContain("data:image/png");
   });
 
-  it("keeps an absolute representative image when localization fails", async () => {
+  it("attempts representative image localization without emitting image frontmatter", async () => {
     const result = await getPage({
       url: `${baseUrl}/failed-image`,
       root,
@@ -455,7 +460,7 @@ describe("getPage", () => {
     });
     const document = await readFile(result.path, "utf8");
     expect(result.assets[0]?.status).toBe("failed");
-    expect(document).toContain(`image: ${baseUrl}/missing.png`);
+    expect(document).not.toContain("image:");
     expect(document).not.toContain("image_source:");
   });
 
@@ -490,6 +495,43 @@ describe("getPage", () => {
     expect(
       conditionalHeaders.filter((request) => request.path === "/image.png").length
     ).toBe(imageRequestsBefore);
+  });
+
+  it("drops stale removed default fields from an existing file during a 304 refresh", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      useAsync: false,
+      now: () => new Date("2026-08-31T12:00:00+09:00")
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    if (!before) {
+      throw new Error("expected a parseable document");
+    }
+    const legacyFrontmatter = {
+      ...before.frontmatter,
+      site: "Example Site",
+      domain: "example.com",
+      image: `${baseUrl}/image.png`,
+      image_source: `${baseUrl}/image.png`,
+      word_count: 42
+    };
+    await writeFile(first.path, serializeDocument(legacyFrontmatter, before.markdown));
+    const updated = await getPage({
+      url: `${baseUrl}/conditional-etag`,
+      root,
+      update: true,
+      headers: [{ name: "If-None-Match", value: '"caller"' }],
+      useAsync: false,
+      now: () => new Date("2026-09-01T14:00:00+09:00")
+    });
+    expect(updated.status).toBe("unchanged");
+    const after = parseDocument(await readFile(updated.path, "utf8"));
+    expect(after?.frontmatter).not.toHaveProperty("site");
+    expect(after?.frontmatter).not.toHaveProperty("domain");
+    expect(after?.frontmatter).not.toHaveProperty("image");
+    expect(after?.frontmatter).not.toHaveProperty("image_source");
+    expect(after?.frontmatter).not.toHaveProperty("word_count");
   });
 
   it("preserves a saved race outcome after a 304 response", async () => {
@@ -571,10 +613,7 @@ describe("getPage", () => {
     replaceBeforeChangingResponse = {
       path: first.path,
       nextBody: concurrentBody,
-      content: serializeDocument(
-        { ...before?.frontmatter, word_count: 3 },
-        concurrentBody
-      )
+      content: serializeDocument({ ...before?.frontmatter }, concurrentBody)
     };
     const warningCodes: string[] = [];
     const updated = await getPage({

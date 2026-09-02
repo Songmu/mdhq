@@ -12,8 +12,6 @@ export interface FrontmatterOptions {
   modified: Date | string;
   etag?: string;
   lastModified?: string;
-  image?: string;
-  imageSource?: string;
   config?: MdhqConfig["frontmatter"];
 }
 
@@ -28,9 +26,14 @@ interface ControlledFrontmatterOptions {
   config?: MdhqConfig["frontmatter"];
 }
 
+const REMOVED_DEFAULT_FIELDS = ["site", "domain", "image", "image_source", "word_count"];
+
 function applyControlledFields(options: ControlledFrontmatterOptions): Record<string, unknown> {
   const fields = { ...options.fields };
   delete fields.type;
+  for (const key of REMOVED_DEFAULT_FIELDS) {
+    delete fields[key];
+  }
   for (const key of options.config?.exclude ?? []) {
     delete fields[key];
   }
@@ -74,23 +77,12 @@ export function buildFrontmatter(options: FrontmatterOptions): Record<string, un
     ["author", options.metadata.author],
     ["published", options.metadata.published],
     ["updated", options.metadata.updated],
-    ["site", options.metadata.site],
-    ["domain", options.metadata.domain],
-    ["language", options.metadata.language],
-    ["word_count", options.metadata.wordCount]
+    ["language", options.metadata.language]
   ];
   for (const [key, value] of metadataFields) {
     if (value !== undefined && value !== "") {
       fields[key] = value;
     }
-  }
-  if (options.image) {
-    fields.image = options.image;
-  } else if (options.metadata.image) {
-    fields.image = options.metadata.image;
-  }
-  if (options.imageSource) {
-    fields.image_source = options.imageSource;
   }
   return applyControlledFields({ ...options, fields });
 }

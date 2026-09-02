@@ -430,9 +430,8 @@ Asset localization is enabled by default. It can be disabled with the
 top-level configuration field `assets: false`, library option
 `GetPageOptions.assets: false`, or CLI option `--no-assets`. The library
 option and CLI option take precedence over configuration. When disabled,
-HTTP(S) image destinations are kept as absolute URLs, the representative
-image remains an absolute frontmatter URL, the result `assets` array is empty,
-and `_assets` is not created.
+HTTP(S) image destinations are kept as absolute URLs, the result `assets`
+array is empty, and `_assets` is not created.
 
 mdhq does not rewrite ordinary links to other locally stored Markdown
 files.
@@ -528,10 +527,12 @@ are caught by the asset-localization stage and converted to this non-fatal
 result. This includes timeouts, redirect failures, HTTP errors, response-size
 limits, unsupported media types, and filesystem errors for that asset.
 
-When the representative image is saved successfully, frontmatter `image`
-contains its local relative path and `image_source` contains the original
-absolute URL. When it fails, `image` remains the absolute URL and
-`image_source` is omitted.
+When the representative image is saved successfully, it is downloaded into
+`_assets` like other localized images even though it is not necessarily
+referenced from the Markdown body. When it fails, the failure produces an
+`ASSET_FETCH_FAILED` warning and a `"failed"` asset result like any other
+image. mdhq does not write the representative image or its source URL to
+frontmatter.
 
 Updates do not delete unreferenced assets.
 
@@ -547,12 +548,7 @@ Metadata fields are emitted when non-empty:
 - `author`
 - `published`
 - `updated`
-- `site`
-- `domain`
 - `language`
-- `word_count`
-- `image`
-- `image_source`
 
 mdhq-controlled fields:
 
@@ -586,12 +582,16 @@ logic. Frontmatter, delimiters, and the blank line between frontmatter and
 body are excluded, and the digest is not stored in frontmatter.
 
 Configured exclusions and values are applied before mdhq-controlled fields.
-Consequently `source`, `requested_url`, `created`, `modified`,
-`content_digest`, `etag`, `last_modified`, and `vary` cannot be overridden by
-frontmatter configuration. `content_digest` and `vary` are always removed from
-serialized frontmatter. Other fields, including extracted metadata, `image`,
-and `type`, can be excluded or replaced. mdhq does not emit `type` by default;
-it can be added with `frontmatter.values`.
+Consequently `source`, `requested_url`, `created`, `modified`, `etag`, and
+`last_modified` cannot be removed or overridden by frontmatter configuration.
+`content_digest` and `vary` are always removed from serialized frontmatter.
+Other fields, including extracted metadata and `type`, can be excluded or
+replaced. mdhq does not emit `type`, `site`, `domain`, `image`,
+`image_source`, or `word_count` by default; any of them can be added with
+`frontmatter.values`. Refreshing an existing file removes `site`, `domain`,
+`image`, `image_source`, and `word_count` when they are still present from a
+file saved by an earlier mdhq version, unless `frontmatter.values` explicitly
+supplies them again.
 
 ## Existing files and concurrent writes
 

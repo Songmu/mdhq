@@ -4,13 +4,14 @@ import {
   markdownContentDigest,
   parseDocument,
   parseDocumentFrontmatter,
+  refreshFrontmatter,
   serializeDocument
 } from "./frontmatter.js";
 
 describe("frontmatter", () => {
   it("adds mdhq fields and requested URL only for redirects", () => {
     const fields = buildFrontmatter({
-      metadata: { title: "Example", wordCount: 42 },
+      metadata: { title: "Example" },
       sourceUrl: "https://example.com/final",
       requestedUrl: "https://example.com/start",
       created: new Date("2026-08-31T12:34:56+09:00"),
@@ -18,7 +19,6 @@ describe("frontmatter", () => {
     });
     expect(fields).toMatchObject({
       title: "Example",
-      word_count: 42,
       source: "https://example.com/final",
       requested_url: "https://example.com/start"
     });
@@ -88,5 +88,62 @@ describe("frontmatter", () => {
         }
       })
     ).not.toHaveProperty("vary");
+  });
+
+  it("does not emit site, domain, image, image_source, or word_count by default", () => {
+    const fields = buildFrontmatter({
+      metadata: {
+        title: "Example",
+        site: "Example Site",
+        domain: "example.com",
+        image: "https://example.com/image.png",
+        wordCount: 42
+      },
+      sourceUrl: "https://example.com/",
+      requestedUrl: "https://example.com/",
+      created: new Date("2026-08-31T12:00:00+09:00"),
+      modified: new Date("2026-08-31T12:00:00+09:00")
+    });
+    expect(fields).not.toHaveProperty("site");
+    expect(fields).not.toHaveProperty("domain");
+    expect(fields).not.toHaveProperty("image");
+    expect(fields).not.toHaveProperty("image_source");
+    expect(fields).not.toHaveProperty("word_count");
+  });
+
+  it("allows removed default fields to be added back via frontmatter.values", () => {
+    const fields = buildFrontmatter({
+      metadata: { title: "Example" },
+      sourceUrl: "https://example.com/",
+      requestedUrl: "https://example.com/",
+      created: new Date("2026-08-31T12:00:00+09:00"),
+      modified: new Date("2026-08-31T12:00:00+09:00"),
+      config: { values: { site: "Custom Site", word_count: 7 } }
+    });
+    expect(fields).toMatchObject({ site: "Custom Site", word_count: 7 });
+  });
+
+  it("strips stale removed default fields when refreshing existing frontmatter", () => {
+    const fields = refreshFrontmatter(
+      {
+        source: "https://example.com/",
+        site: "Example Site",
+        domain: "example.com",
+        image: "https://example.com/image.png",
+        image_source: "https://example.com/original.png",
+        word_count: 42
+      },
+      {
+        sourceUrl: "https://example.com/",
+        requestedUrl: "https://example.com/",
+        created: new Date("2026-08-31T12:00:00+09:00"),
+        modified: new Date("2026-08-31T12:00:00+09:00")
+      }
+    );
+    expect(fields).not.toHaveProperty("site");
+    expect(fields).not.toHaveProperty("domain");
+    expect(fields).not.toHaveProperty("image");
+    expect(fields).not.toHaveProperty("image_source");
+    expect(fields).not.toHaveProperty("word_count");
   });
 });

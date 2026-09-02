@@ -395,12 +395,6 @@ async function getPageAttempt(
     modified: now,
     ...(etag ? { etag } : {}),
     ...(reusableLastModified ? { lastModified: reusableLastModified } : {}),
-    ...(localized.representativeImage
-      ? { image: localized.representativeImage }
-      : {}),
-    ...(localized.representativeImageSource
-      ? { imageSource: localized.representativeImageSource }
-      : {}),
     ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
   };
   const nextFrontmatter = buildFrontmatter(nextFrontmatterOptions);
