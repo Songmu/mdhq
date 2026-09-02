@@ -9,11 +9,9 @@ export interface FrontmatterOptions {
   sourceUrl: string;
   requestedUrl: string;
   created: Date | string;
-  modified: Date;
-  contentDigest: string;
+  modified: Date | string;
   etag?: string;
   lastModified?: string;
-  vary?: string[];
   image?: string;
   imageSource?: string;
   config?: MdhqConfig["frontmatter"];
@@ -24,11 +22,9 @@ interface ControlledFrontmatterOptions {
   sourceUrl: string;
   requestedUrl: string;
   created: Date | string;
-  modified: Date;
-  contentDigest: string;
+  modified: Date | string;
   etag?: string;
   lastModified?: string;
-  vary?: string[];
   config?: MdhqConfig["frontmatter"];
 }
 
@@ -51,8 +47,11 @@ function applyControlledFields(options: ControlledFrontmatterOptions): Record<st
     typeof options.created === "string"
       ? options.created
       : formatLocalRfc3339(options.created);
-  fields.modified = formatLocalRfc3339(options.modified);
-  fields.content_digest = options.contentDigest;
+  fields.modified =
+    typeof options.modified === "string"
+      ? options.modified
+      : formatLocalRfc3339(options.modified);
+  delete fields.content_digest;
   if (options.etag) {
     fields.etag = options.etag;
   } else {
@@ -63,11 +62,7 @@ function applyControlledFields(options: ControlledFrontmatterOptions): Record<st
   } else {
     delete fields.last_modified;
   }
-  if (options.vary) {
-    fields.vary = options.vary;
-  } else {
-    delete fields.vary;
-  }
+  delete fields.vary;
   return fields;
 }
 

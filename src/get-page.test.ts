@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  markdownContentDigest,
   parseDocument,
   serializeDocument
 } from "./frontmatter/frontmatter.js";
@@ -17,6 +16,7 @@ describe("getPage", () => {
   let root: string;
   let crossOriginTarget: string | undefined;
   let changingBody: string;
+  let changingTitle: string;
   let includeChangingEtag: boolean;
   let pageUnavailable: boolean;
   let invalidLastModifiedOn304: boolean;
@@ -35,6 +35,7 @@ describe("getPage", () => {
 
   beforeEach(async () => {
     changingBody = "First version";
+    changingTitle = "Changing";
     includeChangingEtag = false;
     pageUnavailable = false;
     invalidLastModifiedOn304 = false;
@@ -190,7 +191,7 @@ describe("getPage", () => {
               ...(includeChangingEtag ? { etag: '"temporary"' } : {})
             })
             .end(
-              `<html><head><title>Changing</title></head><body><article><p>${responseBody}</p></article></body></html>`
+              `<html><head><title>${changingTitle}</title></head><body><article><p>${responseBody}</p></article></body></html>`
             );
         };
         if (replaceBeforeChangingResponse) {
@@ -333,9 +334,10 @@ describe("getPage", () => {
     const parsed = parseDocument(document);
     expect(parsed?.frontmatter).toMatchObject({
       created: expect.any(String),
-      modified: expect.any(String),
-      content_digest: expect.stringMatching(/^sha256:/u)
+      modified: expect.any(String)
     });
+    expect(parsed?.frontmatter).not.toHaveProperty("content_digest");
+    expect(parsed?.frontmatter).not.toHaveProperty("vary");
     expect(parsed?.frontmatter).not.toHaveProperty("type");
     expect(parsed?.frontmatter.created).toBe(parsed?.frontmatter.modified);
     expect(document.endsWith("\n")).toBe(true);
@@ -465,6 +467,7 @@ describe("getPage", () => {
       now: () => new Date("2026-08-31T12:00:00+09:00")
     });
     const before = parseDocument(await readFile(first.path, "utf8"));
+    const beforeContent = await readFile(first.path, "utf8");
     const imageRequestsBefore = conditionalHeaders.filter(
       (request) => request.path === "/image.png"
     ).length;
@@ -480,9 +483,10 @@ describe("getPage", () => {
     expect(updated.status).toBe("unchanged");
     expect(conditionalHeaders.at(-1)).toMatchObject({ etag: '"v1"' });
     expect(after?.frontmatter.etag).toBe('"v1"');
-    expect(after?.frontmatter.content_digest).toBe(before?.frontmatter.content_digest);
-    expect(after?.frontmatter.modified).not.toBe(before?.frontmatter.modified);
+    expect(after?.frontmatter).not.toHaveProperty("content_digest");
+    expect(after?.frontmatter.modified).toBe(before?.frontmatter.modified);
     expect(after?.markdown).toBe(before?.markdown);
+    expect(await readFile(updated.path, "utf8")).toBe(beforeContent);
     expect(
       conditionalHeaders.filter((request) => request.path === "/image.png").length
     ).toBe(imageRequestsBefore);
@@ -524,8 +528,7 @@ describe("getPage", () => {
       content: serializeDocument(
         {
           ...before?.frontmatter,
-          etag: '"v2"',
-          content_digest: markdownContentDigest(`${concurrentBody}\n`)
+          etag: '"v2"'
         },
         concurrentBody
       )
@@ -569,10 +572,7 @@ describe("getPage", () => {
       path: first.path,
       nextBody: concurrentBody,
       content: serializeDocument(
-        {
-          ...before?.frontmatter,
-          content_digest: markdownContentDigest(`${concurrentBody}\n`)
-        },
+        { ...before?.frontmatter, word_count: 3 },
         concurrentBody
       )
     };
@@ -713,7 +713,7 @@ describe("getPage", () => {
       useAsync: false
     });
     const before = parseDocument(await readFile(first.path, "utf8"));
-    expect(before?.frontmatter.vary).toEqual(["authorization"]);
+    expect(before?.frontmatter).not.toHaveProperty("vary");
     expect(before?.frontmatter).not.toHaveProperty("last_modified");
     expect(before?.markdown).toContain("Private account article.");
 
@@ -729,7 +729,8 @@ describe("getPage", () => {
     expect(conditionalHeaders.at(-1)).toEqual({
       path: "/vary-authorization"
     });
-    expect(after?.frontmatter.vary).toEqual(["authorization"]);
+    expect(after?.frontmatter).not.toHaveProperty("vary");
+    expect(after?.frontmatter).not.toHaveProperty("last_modified");
     expect(after?.markdown).toContain("Public account article.");
   });
 
@@ -760,11 +761,11 @@ describe("getPage", () => {
       path: "/credentialed-no-vary"
     });
     expect(after?.frontmatter.last_modified).toBe("2026-09-01T01:00:00Z");
-    expect(after?.frontmatter.vary).toEqual([]);
+    expect(after?.frontmatter).not.toHaveProperty("vary");
     expect(after?.markdown).toContain("Public account article.");
   });
 
-  it("migrates legacy validators without Vary context through an ordinary GET", async () => {
+  it("removes legacy content_digest and vary while retaining reusable validators", async () => {
     const first = await getPage({
       url: `${baseUrl}/conditional-etag`,
       root,
@@ -772,8 +773,11 @@ describe("getPage", () => {
       useAsync: false
     });
     const document = parseDocument(await readFile(first.path, "utf8"));
-    const legacyFrontmatter = { ...document?.frontmatter };
-    delete legacyFrontmatter.vary;
+    const legacyFrontmatter = {
+      ...document?.frontmatter,
+      content_digest: "sha256:legacy",
+      vary: []
+    };
     await writeFile(
       first.path,
       serializeDocument(legacyFrontmatter, document?.markdown ?? "")
@@ -787,11 +791,13 @@ describe("getPage", () => {
     });
     expect(updated.status).toBe("unchanged");
     expect(conditionalHeaders.at(-1)).toEqual({
-      path: "/conditional-etag"
+      path: "/conditional-etag",
+      etag: '"v1"'
     });
-    expect(
-      parseDocument(await readFile(updated.path, "utf8"))?.frontmatter.vary
-    ).toEqual([]);
+    const migrated = parseDocument(await readFile(updated.path, "utf8"));
+    expect(migrated?.frontmatter.etag).toBe('"v1"');
+    expect(migrated?.frontmatter).not.toHaveProperty("content_digest");
+    expect(migrated?.frontmatter).not.toHaveProperty("vary");
   });
 
   it("preserves the existing document when an update returns 404", async () => {
@@ -821,30 +827,65 @@ describe("getPage", () => {
       url: `${baseUrl}/changing`,
       root,
       assets: false,
-      useAsync: false
+      useAsync: false,
+      now: () => new Date("2026-08-31T12:00:00+09:00")
     });
+    const before = parseDocument(await readFile(first.path, "utf8"));
     includeChangingEtag = false;
     const unchanged = await getPage({
       url: `${baseUrl}/changing`,
       root,
       assets: false,
       update: true,
-      useAsync: false
+      useAsync: false,
+      now: () => new Date("2026-09-01T12:00:00+09:00")
     });
+    const same = parseDocument(await readFile(first.path, "utf8"));
     changingBody = "Second version";
     const changed = await getPage({
       url: `${baseUrl}/changing`,
       root,
       assets: false,
       update: true,
-      useAsync: false
+      useAsync: false,
+      now: () => new Date("2026-09-02T12:00:00+09:00")
     });
+    const changedDocument = parseDocument(await readFile(changed.path, "utf8"));
     expect(first.status).toBe("saved");
     expect(unchanged.status).toBe("unchanged");
     expect(changed.status).toBe("updated");
+    expect(same?.frontmatter.modified).toBe(before?.frontmatter.modified);
+    expect(changedDocument?.frontmatter.modified).not.toBe(
+      before?.frontmatter.modified
+    );
     expect(
-      parseDocument(await readFile(changed.path, "utf8"))?.frontmatter
+      changedDocument?.frontmatter
     ).not.toHaveProperty("etag");
+  });
+
+  it("updates modified and status for user-facing metadata-only changes", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      useAsync: false,
+      now: () => new Date("2026-08-31T12:00:00+09:00")
+    });
+    const before = parseDocument(await readFile(first.path, "utf8"));
+    changingTitle = "Changing metadata";
+    const updated = await getPage({
+      url: `${baseUrl}/changing`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false,
+      now: () => new Date("2026-09-01T12:00:00+09:00")
+    });
+    const after = parseDocument(await readFile(updated.path, "utf8"));
+    expect(updated.status).toBe("updated");
+    expect(after?.markdown).toBe(before?.markdown);
+    expect(after?.frontmatter.title).toBe("Changing metadata");
+    expect(after?.frontmatter.modified).not.toBe(before?.frontmatter.modified);
   });
 
   it("warns and omits an invalid Last-Modified value", async () => {
