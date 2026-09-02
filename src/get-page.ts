@@ -54,6 +54,52 @@ function hasCredentialHeaders(
   });
 }
 
+const NOTE_BOOKKEEPING_FIELDS = new Set([
+  "created",
+  "modified",
+  "etag",
+  "last_modified",
+  "content_digest",
+  "vary"
+]);
+
+function normalizeComparable(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeComparable);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, normalizeComparable(entry)])
+    );
+  }
+  return value;
+}
+
+function userFacingFrontmatter(
+  frontmatter: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(frontmatter)
+      .filter(([key]) => !NOTE_BOOKKEEPING_FIELDS.has(key))
+    .map(
+      ([key, value]): [string, unknown] => [key, normalizeComparable(value)]
+    )
+    .sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function sameUserFacingFrontmatter(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>
+): boolean {
+  return (
+    JSON.stringify(userFacingFrontmatter(left)) ===
+    JSON.stringify(userFacingFrontmatter(right))
+  );
+}
+
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
   const requestedUrl = parseHttpUrl(options.url).href;
   const loaded = await loadConfig(options.configPath);
@@ -125,7 +171,6 @@ async function getPageAttempt(
   if (
     options.update &&
     requestedExisting &&
-    requestedExisting.vary?.length === 0 &&
     !hasCredentialHeaders(headers) &&
     sameHttpTarget(requestedExisting.sourceUrl, fetchUrl)
   ) {
@@ -189,17 +234,11 @@ async function getPageAttempt(
         isRfc3339DateTime(requestedExisting.created)
           ? requestedExisting.created
           : now,
-      modified: now,
-      contentDigest: requestedExisting.contentDigest,
+      modified: requestedExisting.modified ?? now,
       ...(etag ? { etag } : {}),
       ...(reusableLastModified
         ? { lastModified: reusableLastModified }
         : {}),
-      ...(vary.length > 0
-        ? { vary }
-        : etag || reusableLastModified
-          ? { vary: [] }
-          : {}),
       ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
     });
     const content = serializeDocument(frontmatter, requestedExisting.markdown);
@@ -230,7 +269,7 @@ async function getPageAttempt(
       requestedUrl,
       sourceUrl: requestedExisting.sourceUrl,
       path: requestedPath,
-      status: storageStatus === "updated" ? "unchanged" : storageStatus,
+      status: storageStatus === "saved" ? "saved" : "unchanged",
       assets: [],
       warnings
     };
@@ -348,22 +387,30 @@ async function getPageAttempt(
   const validatorsReusable = vary.length === 0 && !responseCredentialed;
   const etag = validatorsReusable ? fetched.etag : undefined;
   const reusableLastModified = validatorsReusable ? lastModified : undefined;
-  const frontmatter = buildFrontmatter({
+  const nextFrontmatterOptions = {
     metadata,
     sourceUrl: finalUrl.href,
     requestedUrl,
     created,
     modified: now,
-    contentDigest,
     ...(etag ? { etag } : {}),
     ...(reusableLastModified ? { lastModified: reusableLastModified } : {}),
-    ...(vary.length > 0
-      ? { vary }
-      : etag || reusableLastModified
-        ? { vary: [] }
-        : {}),
     ...(loaded.config.frontmatter ? { config: loaded.config.frontmatter } : {})
-  });
+  };
+  const nextFrontmatter = buildFrontmatter(nextFrontmatterOptions);
+  const noteChanged =
+    !expectedExisting ||
+    expectedExisting.contentDigest !== contentDigest ||
+    !sameUserFacingFrontmatter(
+      expectedExisting.frontmatter,
+      nextFrontmatter
+    );
+  const frontmatter = noteChanged
+    ? nextFrontmatter
+    : buildFrontmatter({
+        ...nextFrontmatterOptions,
+        modified: expectedExisting.modified ?? now
+      });
   const content = serializeDocument(frontmatter, localized.markdown);
   const storageStatus = await saveDocument({
     path: markdownPath,
@@ -395,8 +442,9 @@ async function getPageAttempt(
     sourceUrl: finalUrl.href,
     path: markdownPath,
     status:
-      storageStatus === "updated" &&
-      expectedExisting?.contentDigest === contentDigest
+      expectedExisting &&
+      (storageStatus === "updated" || storageStatus === "skipped") &&
+      !noteChanged
         ? "unchanged"
         : storageStatus,
     assets: localized.assets,

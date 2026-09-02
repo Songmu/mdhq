@@ -183,6 +183,9 @@ Protected fields are:
 - `last_modified`
 - `vary`
 
+`content_digest` and `vary` are reserved legacy names and are removed from
+serialized frontmatter even if configured in `frontmatter.values`.
+
 mdhq does not add a `type` property by default. Add one explicitly when
 desired:
 

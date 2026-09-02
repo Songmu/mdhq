@@ -15,17 +15,15 @@ describe("frontmatter", () => {
       sourceUrl: "https://example.com/final",
       requestedUrl: "https://example.com/start",
       created: new Date("2026-08-31T12:34:56+09:00"),
-      modified: new Date("2026-08-31T12:34:56+09:00"),
-      contentDigest: "sha256:test",
-      vary: []
+      modified: new Date("2026-08-31T12:34:56+09:09")
     });
     expect(fields).toMatchObject({
       title: "Example",
       source: "https://example.com/final",
-      requested_url: "https://example.com/start",
-      content_digest: "sha256:test",
-      vary: []
+      requested_url: "https://example.com/start"
     });
+    expect(fields).not.toHaveProperty("content_digest");
+    expect(fields).not.toHaveProperty("vary");
     expect(fields.created).toMatch(/^2026-08-31T/);
     expect(fields.modified).toMatch(/^2026-08-31T/);
     expect(fields).not.toHaveProperty("type");
@@ -42,8 +40,7 @@ describe("frontmatter", () => {
       sourceUrl: "https://example.com/",
       requestedUrl: "https://example.com/",
       created: "2026-08-30T10:00:00-04:00",
-      modified: new Date("2026-08-31T12:00:00+09:00"),
-      contentDigest: "sha256:test"
+      modified: new Date("2026-08-31T12:00:00+09:00")
     });
     expect(fields.created).toBe("2026-08-30T10:00:00-04:00");
   });
@@ -70,20 +67,27 @@ describe("frontmatter", () => {
       sourceUrl: "https://example.com/",
       requestedUrl: "https://example.com/",
       created: new Date("2026-08-31T12:00:00+09:00"),
-      modified: new Date("2026-08-31T12:00:00+09:00"),
-      contentDigest: "sha256:test"
+      modified: new Date("2026-08-31T12:00:00+09:00")
     };
     expect(buildFrontmatter(common)).not.toHaveProperty("type");
     expect(
       buildFrontmatter({
         ...common,
-        vary: [],
         config: {
           exclude: ["vary"],
           values: { type: "clip", vary: "caller-value" }
         }
       })
-    ).toMatchObject({ type: "clip", vary: [] });
+    ).toMatchObject({ type: "clip" });
+    expect(
+      buildFrontmatter({
+        ...common,
+        config: {
+          exclude: ["vary"],
+          values: { type: "clip", vary: "caller-value" }
+        }
+      })
+    ).not.toHaveProperty("vary");
   });
 
   it("does not emit site, domain, image, image_source, or word_count by default", () => {
@@ -98,8 +102,7 @@ describe("frontmatter", () => {
       sourceUrl: "https://example.com/",
       requestedUrl: "https://example.com/",
       created: new Date("2026-08-31T12:00:00+09:00"),
-      modified: new Date("2026-08-31T12:00:00+09:00"),
-      contentDigest: "sha256:test"
+      modified: new Date("2026-08-31T12:00:00+09:00")
     });
     expect(fields).not.toHaveProperty("site");
     expect(fields).not.toHaveProperty("domain");
@@ -115,7 +118,6 @@ describe("frontmatter", () => {
       requestedUrl: "https://example.com/",
       created: new Date("2026-08-31T12:00:00+09:00"),
       modified: new Date("2026-08-31T12:00:00+09:00"),
-      contentDigest: "sha256:test",
       config: { values: { site: "Custom Site", word_count: 7 } }
     });
     expect(fields).toMatchObject({ site: "Custom Site", word_count: 7 });
@@ -135,8 +137,7 @@ describe("frontmatter", () => {
         sourceUrl: "https://example.com/",
         requestedUrl: "https://example.com/",
         created: new Date("2026-08-31T12:00:00+09:00"),
-        modified: new Date("2026-08-31T12:00:00+09:00"),
-        contentDigest: "sha256:test"
+        modified: new Date("2026-08-31T12:00:00+09:00")
       }
     );
     expect(fields).not.toHaveProperty("site");

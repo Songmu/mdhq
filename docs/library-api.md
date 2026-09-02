@@ -174,16 +174,18 @@ interface GetPageResult {
 Status meanings:
 
 - `saved`: a new document was created.
-- `updated`: an existing document's normalized Markdown body changed.
+- `updated`: an existing document's normalized Markdown body or user-facing
+  frontmatter changed.
 - `unchanged`: HTTP returned 304, or a 200 response produced the same
-  normalized Markdown body digest. Acquisition metadata may still be updated.
+  normalized Markdown body and user-facing frontmatter. HTTP validators may
+  still be updated.
 - `skipped`: an existing same-identity document was found without `update`.
 
 With `update`, `getPage` sends the stored `etag` as `If-None-Match`, or falls
-back to the stored `last_modified` as `If-Modified-Since`, only when `vary: []`
-certifies that the stored response had no `Vary` header. These validators,
-along with `created`, `modified`, and `content_digest`, are stored in the
-Markdown frontmatter.
+back to the stored `last_modified` as `If-Modified-Since`, when the request is
+for the same HTTP target and does not include credentials. `etag` and
+`last_modified` are stored in Markdown frontmatter only when the response is
+safe to revalidate; `Vary` and body digests are not serialized.
 
 ### Asset results
 

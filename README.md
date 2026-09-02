@@ -99,12 +99,13 @@ absolute image URLs without creating `_assets`.
 
 Saved frontmatter uses Obsidian Web Clipper-compatible names such as `title`,
 `source`, `author`, `published`, `created`, and `description`. mdhq also stores
-`modified`, a Markdown-body `content_digest`, and HTTP validators for
+`modified` for the last meaningful note change and safe HTTP validators for
 conditional updates. It does not add `type` or `tags` by default; use
 `frontmatter.values` to opt into values such as `"type": "clip"`.
 
-An update returns `updated` when the normalized Markdown body changes and
-`unchanged` when HTTP returns 304 or the fetched body digest is unchanged.
+An update returns `updated` when the normalized Markdown body or user-facing
+frontmatter changes and `unchanged` when HTTP returns 304 or the fetched note
+content is unchanged.
 
 ## Documentation
 
