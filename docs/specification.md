@@ -569,7 +569,9 @@ With `update`:
 - temporary files are removed after success or failure
 
 Lock directories are removed when the write completes. Stale locks left by a
-terminated process are recovered by the lock implementation.
+terminated process are recovered by the lock implementation. A writer waits
+up to 60 seconds for a healthy writer holding the same destination lock before
+returning a storage error.
 
 Initial Markdown and asset publication requires filesystem hard-link support.
 This is supported by standard Windows NTFS volumes and common Linux and macOS

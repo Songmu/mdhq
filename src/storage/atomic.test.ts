@@ -52,4 +52,28 @@ describe("withDestinationLock", () => {
     ]);
     await expect(access(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("waits for a healthy writer beyond the previous short retry window", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-lock-"));
+    const file = path.join(directory, "example.md");
+    let releaseFirst: (() => void) | undefined;
+    const firstMayFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstStarted: (() => void) | undefined;
+    const firstDidStart = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const first = withDestinationLock(file, async () => {
+      firstStarted?.();
+      await firstMayFinish;
+    });
+    await firstDidStart;
+
+    const second = withDestinationLock(file, async () => "second");
+    await delay(2_000);
+    releaseFirst?.();
+    await expect(second).resolves.toBe("second");
+    await first;
+  });
 });

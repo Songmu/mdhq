@@ -7,6 +7,8 @@ import { assertSafeDestination } from "./path-safety.js";
 type FileContent = string | Uint8Array;
 
 const LOCK_STALE_MS = 300_000;
+const LOCK_RETRY_INTERVAL_MS = 100;
+const LOCK_WAIT_MS = 60_000;
 
 function temporaryPath(targetPath: string): string {
   return path.join(
@@ -31,11 +33,11 @@ export async function withDestinationLock<T>(
     stale: LOCK_STALE_MS,
     update: LOCK_STALE_MS / 3,
     retries: {
-      retries: 100,
+      retries: LOCK_WAIT_MS / LOCK_RETRY_INTERVAL_MS,
       factor: 1,
-      minTimeout: 10,
-      maxTimeout: 100,
-      randomize: true
+      minTimeout: LOCK_RETRY_INTERVAL_MS,
+      maxTimeout: LOCK_RETRY_INTERVAL_MS,
+      randomize: false
     }
   });
   try {
