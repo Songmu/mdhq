@@ -2,7 +2,7 @@ import path from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
 import { MdhqError } from "../errors.js";
 import { markdownContentDigest, parseDocument } from "../frontmatter/frontmatter.js";
-import { sameUrlIdentity } from "../url/identity.js";
+import { sameUrlIdentity, type EntryQueryKeys } from "../url/identity.js";
 import {
   publishFileExclusive,
   replaceFileAtomic,
@@ -16,7 +16,7 @@ export interface SaveDocumentOptions {
   sourceUrl: string;
   update: boolean;
   expectedContent?: string | null;
-  entryQueryKey?: string;
+  entryQueryKeys?: EntryQueryKeys;
   root?: string;
 }
 
@@ -71,14 +71,14 @@ export async function readExistingDocument(filePath: string): Promise<ExistingDo
 function assertSameIdentity(
   existing: ExistingDocument | undefined,
   sourceUrl: string,
-  entryQueryKey: string | undefined,
+  entryQueryKeys: EntryQueryKeys | undefined,
   filePath: string
 ): void {
   let matches = false;
   try {
     matches =
       existing !== undefined &&
-      sameUrlIdentity(existing.sourceUrl, sourceUrl, entryQueryKey);
+      sameUrlIdentity(existing.sourceUrl, sourceUrl, entryQueryKeys);
   } catch {
     matches = false;
   }
@@ -93,7 +93,7 @@ function assertSameIdentity(
 export async function inspectDestination(
   filePath: string,
   sourceUrl: string,
-  entryQueryKey?: string,
+  entryQueryKeys?: EntryQueryKeys,
   root?: string
 ): Promise<ExistingDocument | undefined> {
   if (root) {
@@ -101,7 +101,7 @@ export async function inspectDestination(
   }
   const existing = await readExistingDocument(filePath);
   if (existing) {
-    assertSameIdentity(existing, sourceUrl, entryQueryKey, filePath);
+    assertSameIdentity(existing, sourceUrl, entryQueryKeys, filePath);
   }
   return existing;
 }
@@ -129,7 +129,7 @@ export async function saveDocument(
           assertSameIdentity(
             existing,
             options.sourceUrl,
-            options.entryQueryKey,
+            options.entryQueryKeys,
             options.path
           );
           if (!options.update) {
@@ -148,7 +148,7 @@ export async function saveDocument(
               assertSameIdentity(
                 current,
                 options.sourceUrl,
-                options.entryQueryKey,
+                options.entryQueryKeys,
                 options.path
               );
               if (
@@ -175,7 +175,7 @@ export async function saveDocument(
         assertSameIdentity(
           current,
           options.sourceUrl,
-          options.entryQueryKey,
+          options.entryQueryKeys,
           options.path
         );
         return hasExpectation ? "conflicted" : "skipped";

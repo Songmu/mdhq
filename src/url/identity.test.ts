@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createUrlIdentity,
   normalizeHost,
+  resolveEntryQueryKeys,
   sameHttpTarget,
   sameUrlIdentity,
   serializeUrlIdentity
@@ -27,6 +28,31 @@ describe("URL identity", () => {
         createUrlIdentity("https://example.com/blog.php?id=123&ignore=1", "id")
       )
     ).toBe("//example.com/blog.php?id=123");
+  });
+
+  it("automatically resolves only supported CMS entry URL patterns", () => {
+    expect(resolveEntryQueryKeys("https://example.com/article?entry_id=123")).toEqual([
+      "entry_id"
+    ]);
+    expect(resolveEntryQueryKeys("https://example.com/article?p=123")).toEqual(["p"]);
+    expect(
+      resolveEntryQueryKeys(
+        "https://example.com/index.php?option=com_content&view=article&id=123"
+      )
+    ).toEqual(["option", "view", "id"]);
+    expect(resolveEntryQueryKeys("https://example.com/mt.cgi?_type=entry&id=123")).toEqual([
+      "_type",
+      "id"
+    ]);
+    expect(resolveEntryQueryKeys("https://example.com/detail.php?id=123")).toEqual(["id"]);
+    expect(resolveEntryQueryKeys("https://example.com/?id=123")).toBeUndefined();
+    expect(resolveEntryQueryKeys("https://example.com/article?id=123&id=456")).toBeUndefined();
+  });
+
+  it("uses explicit configuration in preference to automatic rules", () => {
+    const url = "https://example.com/article.php?entry_id=123&id=456";
+    expect(resolveEntryQueryKeys(url, "id")).toEqual(["id"]);
+    expect(resolveEntryQueryKeys(url, null)).toBeUndefined();
   });
 
   it("normalizes Unicode and percent-escape spelling in paths", () => {
