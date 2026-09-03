@@ -263,7 +263,7 @@ function parseJsonLd(source: string): unknown {
   let result = "";
   let inString = false;
   for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
+    const character = source.charAt(index);
     if (character === '"') {
       let backslashes = 0;
       for (let previous = index - 1; previous >= 0 && source[previous] === "\\"; previous -= 1) {
