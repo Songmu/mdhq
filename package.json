@@ -42,6 +42,10 @@
   },
   "homepage": "https://github.com/Songmu/mdhq",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "dependencies": {
     "commander": "^15.0.0",
     "defuddle": "0.19.3",

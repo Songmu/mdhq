@@ -50,5 +50,6 @@
 [tagpr]
 	releaseBranch = main
 	versionFile = package.json
+	postVersionCommand = npm install --package-lock-only --ignore-scripts
 	vPrefix = true
 	release = false
