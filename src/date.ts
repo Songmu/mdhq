@@ -388,6 +388,7 @@ function normalizeSourceDateString(trimmed: string): string | undefined {
     ) {
       return `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}`;
     }
+    return undefined;
   }
   if (INTEGER_STRING.test(trimmed)) {
     return normalizeEpochString(trimmed);
@@ -443,29 +444,47 @@ function normalizeSourceDateString(trimmed: string): string | undefined {
  * ambiguous shapes return `undefined` instead of throwing or guessing.
  */
 export function normalizeSourceDate(value: unknown): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const normalized = normalizeSourceDate(item);
+  const candidates = [value];
+  const seen = new Set<object>();
+  while (candidates.length > 0) {
+    const candidate = candidates.pop();
+    if (candidate === undefined || candidate === null) {
+      continue;
+    }
+    if (Array.isArray(candidate)) {
+      if (seen.has(candidate)) {
+        continue;
+      }
+      seen.add(candidate);
+      for (let index = candidate.length - 1; index >= 0; index -= 1) {
+        candidates.push(candidate[index]);
+      }
+      continue;
+    }
+    if (typeof candidate === "number") {
+      const normalized = normalizeEpochNumber(candidate);
       if (normalized !== undefined) {
         return normalized;
       }
+      continue;
     }
-    return undefined;
-  }
-  if (typeof value === "number") {
-    return normalizeEpochNumber(value);
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? normalizeSourceDateString(trimmed) : undefined;
-  }
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if ("@value" in record) {
-      return normalizeSourceDate(record["@value"]);
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      const normalized = trimmed ? normalizeSourceDateString(trimmed) : undefined;
+      if (normalized !== undefined) {
+        return normalized;
+      }
+      continue;
+    }
+    if (typeof candidate === "object") {
+      if (seen.has(candidate)) {
+        continue;
+      }
+      seen.add(candidate);
+      const record = candidate as Record<string, unknown>;
+      if ("@value" in record) {
+        candidates.push(record["@value"]);
+      }
     }
   }
   return undefined;

@@ -66,10 +66,8 @@ describe("normalizeSourceDate", () => {
   it("recognizes compact YYYYMMDD before treating it as a numeric epoch", () => {
     expect(normalizeSourceDate("20260831")).toBe("2026-08-31");
     expect(normalizeSourceDate(20260831)).toBe("2026-08-31");
-    // Not a valid calendar date (month 13); falls through to epoch-seconds.
-    expect(normalizeSourceDate("20261301")).toBe(
-      new Date(20261301 * 1000).toISOString().replace(".000Z", "Z")
-    );
+    expect(normalizeSourceDate("20261301")).toBeUndefined();
+    expect(normalizeSourceDate(20261301)).toBeUndefined();
   });
 
   it("accepts unambiguous English month-name date text as date-only", () => {
@@ -160,6 +158,22 @@ describe("normalizeSourceDate", () => {
     expect(normalizeSourceDate({})).toBeUndefined();
     expect(normalizeSourceDate({ foo: "bar" })).toBeUndefined();
     expect(normalizeSourceDate([])).toBeUndefined();
+  });
+
+  it("handles cyclic and deeply nested JSON-LD-like shapes without overflowing", () => {
+    const cyclicArray: unknown[] = [];
+    cyclicArray.push(cyclicArray);
+    expect(normalizeSourceDate(cyclicArray)).toBeUndefined();
+
+    const cyclicValue: Record<string, unknown> = {};
+    cyclicValue["@value"] = cyclicValue;
+    expect(normalizeSourceDate(cyclicValue)).toBeUndefined();
+
+    let deeplyNested: unknown = "2026-08-31";
+    for (let depth = 0; depth < 20_000; depth += 1) {
+      deeplyNested = { "@value": deeplyNested };
+    }
+    expect(normalizeSourceDate(deeplyNested)).toBe("2026-08-31");
   });
 });
 

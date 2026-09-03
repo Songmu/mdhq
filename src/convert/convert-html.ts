@@ -29,22 +29,6 @@ function dateOnlyEvidence(document: Document, expectedDate: string): string | un
   return undefined;
 }
 
-function hasExplicitDateTime(document: Document, expectedDate: string): boolean {
-  for (const element of document.querySelectorAll("time[datetime], [datetime], meta[property], meta[name]")) {
-    for (const attribute of ["datetime", "content"]) {
-      const value = element.getAttribute(attribute);
-      if (!value) {
-        continue;
-      }
-      const normalized = normalizeSourceDate(value);
-      if (normalized && normalized.startsWith(`${expectedDate}T`)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 export async function convertHtml(options: ConvertHtmlOptions): Promise<ConvertedPage> {
   let url: URL;
   try {
@@ -77,13 +61,9 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
       synthesizedMidnightDate === undefined
         ? undefined
         : dateOnlyEvidence(document, synthesizedMidnightDate.slice(0, 10));
-    const hasExplicitMidnightDateTime =
-      synthesizedMidnightDate !== undefined &&
-      hasExplicitDateTime(document, synthesizedMidnightDate.slice(0, 10));
     const published =
       publishedFromMetadata ??
       (synthesizedMidnightDate !== undefined &&
-      !hasExplicitMidnightDateTime &&
       publishedDateOnlyEvidence === synthesizedMidnightDate.slice(0, 10)
         ? publishedDateOnlyEvidence
         : publishedFromDefuddle);

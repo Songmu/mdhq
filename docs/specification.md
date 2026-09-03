@@ -583,6 +583,12 @@ metadata is present. Schema.org selection prefers an entity linked to the
 current page through `url`, `@id`, `mainEntity`, or `mainEntityOfPage`;
 concrete Article and Posting types rank ahead of generic WebPage and
 CreativeWork fallbacks, independently of graph order.
+The `published` field represents the initial publication date. Explicit
+publication timestamps are preserved only when they come from
+publication-specific metadata; modification or event timestamps are not
+publication evidence. If Defuddle synthesizes a midnight UTC timestamp from
+visible date-only text, unrelated same-day datetime metadata does not prevent
+mdhq from returning `YYYY-MM-DD`.
 
 Source-date normalization accepts the following inputs and, for each, always
 produces exactly one of two canonical forms: `YYYY-MM-DD` when only a
