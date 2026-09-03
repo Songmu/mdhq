@@ -100,15 +100,25 @@ create it.
    destination from that URL.
 7. Check the final destination for another same-identity skip.
 8. Convert the fetched HTML to Markdown with Defuddle.
-9. Normalize ordinary links and discover image links.
-10. Download supported images and rewrite successful image destinations.
-11. Normalize the Markdown body and calculate its SHA-256 content digest.
-12. Build YAML frontmatter.
-13. Save the Markdown with collision-safe create or update behavior.
+9. When the page declares a canonical URL with a different origin or pathname,
+   fetch that URL once without caller-supplied headers. If successful, use its
+   final URL and content instead.
+10. Normalize ordinary links and discover image links.
+11. Download supported images and rewrite successful image destinations.
+12. Normalize the Markdown body and calculate its SHA-256 content digest.
+13. Build YAML frontmatter.
+14. Save the Markdown with collision-safe create or update behavior.
 
 The final URL determines the destination and the `source` frontmatter field.
 The original URL is retained as `requested_url` only when it differs from the
 final URL.
+
+A canonical URL that differs only by query or fragment is recorded as
+`canonical_url` but is not fetched again. A canonical URL with a different
+origin or pathname is fetched once without caller headers; if that request
+succeeds, its final URL becomes `source` while the original input remains
+`requested_url`. Failure to fetch the canonical URL records a
+`CANONICAL_FETCH_FAILED` warning and preserves the originally fetched page.
 
 ## HTTP behavior
 

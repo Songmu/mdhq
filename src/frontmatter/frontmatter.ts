@@ -26,7 +26,14 @@ interface ControlledFrontmatterOptions {
   config?: MdhqConfig["frontmatter"];
 }
 
-const REMOVED_DEFAULT_FIELDS = ["site", "domain", "image", "image_source", "word_count"];
+const REMOVED_DEFAULT_FIELDS = [
+  "site",
+  "domain",
+  "image",
+  "image_source",
+  "word_count",
+  "canonical"
+];
 
 function applyControlledFields(options: ControlledFrontmatterOptions): Record<string, unknown> {
   const fields = { ...options.fields };
@@ -77,7 +84,8 @@ export function buildFrontmatter(options: FrontmatterOptions): Record<string, un
     ["author", options.metadata.author],
     ["published", options.metadata.published],
     ["updated", options.metadata.updated],
-    ["language", options.metadata.language]
+    ["language", options.metadata.language],
+    ["canonical_url", options.metadata.canonical]
   ];
   for (const [key, value] of metadataFields) {
     if (value !== undefined && value !== "") {

@@ -116,15 +116,21 @@ export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
     { options, requestedUrl, loaded, warnings, warn, root },
     requestedUrl,
     2,
-    true
+    true,
+    false
   );
+}
+
+function differsBeyondQuery(left: URL, right: URL): boolean {
+  return left.origin !== right.origin || left.pathname !== right.pathname;
 }
 
 async function getPageAttempt(
   context: GetPageContext,
   fetchUrl: string,
   retriesRemaining: number,
-  callerHeadersAllowed: boolean
+  callerHeadersAllowed: boolean,
+  canonicalFollowed: boolean
 ): Promise<GetPageResult> {
   const { options, requestedUrl, loaded, warnings, warn, root } = context;
   const requested = new URL(fetchUrl);
@@ -262,7 +268,8 @@ async function getPageAttempt(
         context,
         fetchUrl,
         retriesRemaining - 1,
-        responseHeadersAllowed
+        responseHeadersAllowed,
+        canonicalFollowed
       );
     }
     return {
@@ -307,7 +314,8 @@ async function getPageAttempt(
       context,
       finalUrl.href,
       retriesRemaining - 1,
-      responseHeadersAllowed
+      responseHeadersAllowed,
+      canonicalFollowed
     );
   }
   if (existing && !options.update) {
@@ -338,7 +346,32 @@ async function getPageAttempt(
         true
     }
   });
-  let metadata = converted.metadata;
+  if (converted.metadata.canonical && !canonicalFollowed) {
+    try {
+      const canonicalUrl = parseHttpUrl(converted.metadata.canonical);
+      if (differsBeyondQuery(finalUrl, canonicalUrl)) {
+        return await getPageAttempt(
+          context,
+          canonicalUrl.href,
+          retriesRemaining,
+          false,
+          true
+        );
+      }
+    } catch (error) {
+      warn({
+        code: "CANONICAL_FETCH_FAILED",
+        message: `Unable to use canonical URL ${converted.metadata.canonical}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        url: finalUrl.href
+      });
+    }
+  }
+  let metadata =
+    canonicalFollowed && !converted.metadata.canonical
+      ? { ...converted.metadata, canonical: fetchUrl }
+      : converted.metadata;
   if (converted.metadata.image) {
     try {
       const image = new URL(converted.metadata.image, finalUrl);
@@ -434,7 +467,8 @@ async function getPageAttempt(
       context,
       fetchUrl,
       retriesRemaining - 1,
-      responseHeadersAllowed
+      responseHeadersAllowed,
+      canonicalFollowed
     );
   }
   return {

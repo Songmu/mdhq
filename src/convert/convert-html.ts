@@ -29,6 +29,24 @@ function dateOnlyEvidence(document: Document, expectedDate: string): string | un
   return undefined;
 }
 
+function canonicalUrl(document: Document, baseUrl: URL): string | undefined {
+  const element = [...document.querySelectorAll("link[rel][href]")].find((link) =>
+    link
+      .getAttribute("rel")
+      ?.split(/\s+/u)
+      .some((value) => value.toLowerCase() === "canonical")
+  );
+  const href = element?.getAttribute("href")?.trim();
+  if (!href) {
+    return undefined;
+  }
+  try {
+    return new URL(href, baseUrl).href;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function convertHtml(options: ConvertHtmlOptions): Promise<ConvertedPage> {
   let url: URL;
   try {
@@ -40,6 +58,7 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
   }
   try {
     const { document } = parseHTML(options.html);
+    const canonical = canonicalUrl(document, url);
     const updated = extractUpdatedDateFromDocument(document, url.href);
     const publishedFromMetadata = extractPublishedDateFromDocument(document, url.href);
     const result = await Defuddle(options.html, url.href, {
@@ -78,7 +97,8 @@ export async function convertHtml(options: ConvertHtmlOptions): Promise<Converte
       domain: nonempty(result.domain),
       language: nonempty(result.language),
       image: nonempty(result.image),
-      favicon: nonempty(result.favicon)
+      favicon: nonempty(result.favicon),
+      canonical
     };
     for (const [key, value] of Object.entries(stringFields)) {
       if (value !== undefined) {

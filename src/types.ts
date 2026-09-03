@@ -33,6 +33,7 @@ export interface PageMetadata {
   language?: string;
   image?: string;
   favicon?: string;
+  canonical?: string;
   wordCount?: number;
 }
 

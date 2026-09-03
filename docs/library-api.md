@@ -84,12 +84,14 @@ interface PageMetadata {
   language?: string;
   image?: string;
   favicon?: string;
+  canonical?: string;
   wordCount?: number;
 }
 ```
 
 Empty string metadata is omitted. `wordCount` is omitted unless it is greater
-than zero.
+than zero. `canonical` is the absolute URL declared by a canonical link when
+one is present.
 
 ## `getPage`
 
@@ -235,6 +237,7 @@ Current warning codes:
 | `ASSET_FETCH_FAILED` | An individual asset could not be fetched, validated, or saved. |
 | `INVALID_IMAGE_URL` | Defuddle returned an invalid or non-HTTP(S) representative-image URL; the page is saved without that metadata field. |
 | `INVALID_LAST_MODIFIED` | A response contained an invalid `Last-Modified` value; the page is saved without that validator. |
+| `CANONICAL_FETCH_FAILED` | A materially different canonical URL could not be fetched; the originally fetched page was saved. |
 
 Warnings are both accumulated in the result and delivered to `onWarning`.
 
