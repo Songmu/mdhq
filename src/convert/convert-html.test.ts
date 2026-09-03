@@ -34,4 +34,64 @@ describe("convertHtml", () => {
     expect(result.metadata.updated).toBe("2026-08-31T12:34:56+09:00");
   });
 
+  it("prefers a numeric JSON-LD datePublished value that Defuddle would drop", async () => {
+    const result = await convertHtml({
+      html: `<!doctype html><html><head>
+        <script type="application/ld+json">
+          {"@type":"NewsArticle","datePublished":1693672496}
+        </script>
+      </head><body><article><p>Published article content.</p></article></body></html>`,
+      url: "https://example.com/article",
+      defuddle: { useAsync: false }
+    });
+    expect(result.metadata.published).toBe("2023-09-02T16:34:56Z");
+  });
+
+  it("preserves JSON-LD decimal numbers while extracting dates", async () => {
+    const result = await convertHtml({
+      html: `<!doctype html><html><head>
+        <script type="application/ld+json">
+          {"@type":"NewsArticle","ratingValue":4.5,"datePublished":1693672496}
+        </script>
+      </head><body><article><p>Published article content.</p></article></body></html>`,
+      url: "https://example.com/article",
+      defuddle: { useAsync: false }
+    });
+    expect(result.metadata.published).toBe("2023-09-02T16:34:56Z");
+  });
+
+  it("keeps an explicit publication midnight timestamp", async () => {
+    const result = await convertHtml({
+      html: `<!doctype html><html><head><title>Example</title></head><body>
+        <article>
+          <p>Published on August 31, 2026.</p>
+          <time itemprop="datePublished" datetime="2026-08-31T00:00:00+00:00">
+            August 31, 2026
+          </time>
+        </article>
+      </body></html>`,
+      url: "https://example.com/article",
+      defuddle: { useAsync: false }
+    });
+    expect(result.metadata.published).toBe("2026-08-31T00:00:00+00:00");
+  });
+
+  it("does not treat a same-day modification datetime as publication evidence", async () => {
+    const result = await convertHtml({
+      html: `<!doctype html><html><head><title>Example</title></head><body>
+        <article>
+          <p>Published on August 31, 2026.</p>
+          <aside>
+            <time itemprop="dateModified" datetime="2026-08-31T00:00:00+00:00">
+              Updated on August 31, 2026
+            </time>
+          </aside>
+        </article>
+      </body></html>`,
+      url: "https://example.com/article",
+      defuddle: { useAsync: false }
+    });
+    expect(result.metadata.published).toBe("2026-08-31");
+  });
+
 });
