@@ -1,7 +1,7 @@
-# mdhq
+# mdhq - Markdown headquarters (?)
 
-`mdhq` saves web pages as Markdown in a ghq-inspired filesystem layout. It
-uses Defuddle for content extraction and keeps all state in Markdown and asset
+`mdhq` saves web pages as Markdown in a [ghq](https://github.com/x-motemen/ghq)-inspired filesystem layout. It
+uses [Defuddle](https://defuddle.md/) for content extraction and keeps all state in Markdown and asset
 files rather than a database.
 
 ## Requirements
