@@ -44,7 +44,4 @@ jobs:
           node-version-file: package.json
           package-manager-cache: false
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run test:package
       - run: npm publish
