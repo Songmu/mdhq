@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.2](https://github.com/Songmu/mdhq/compare/v0.0.1...v0.0.2) - 2026-09-04
+
+- Publish package as @songmu/mdhq by @Songmu in https://github.com/Songmu/mdhq/pull/26
+
 ## [v0.0.1](https://github.com/Songmu/mdhq/commits/v0.0.1) - 2026-09-04
 
 - Add option to disable asset localization by @Songmu in https://github.com/Songmu/mdhq/pull/1
