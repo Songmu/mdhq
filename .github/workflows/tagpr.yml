@@ -45,3 +45,17 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm publish
+
+  release:
+    needs:
+      - tagpr
+      - publish
+    if: needs.tagpr.outputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: gh release edit "$TAG" --draft=false --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.tagpr.outputs.tag }}
