@@ -366,56 +366,6 @@ describe("getPage", () => {
       now: () => new Date("2026-08-31T12:00:00+09:00")
     });
 
-    it("does not refetch a canonical URL that differs only by query", async () => {
-      const result = await getPage({
-        url: `${baseUrl}/canonical-query?from=alias`,
-        root,
-        assets: false,
-        useAsync: false
-      });
-      expect(conditionalHeaders.filter((request) => request.path.startsWith("/canonical-query"))).toEqual([
-        { path: "/canonical-query?from=alias" }
-      ]);
-      const document = parseDocument(await readFile(result.path, "utf8"));
-      expect(result.sourceUrl).toBe(`${baseUrl}/canonical-query?from=alias`);
-      expect(document?.frontmatter.canonical_url).toBe(
-        `${baseUrl}/canonical-query?canonical=1`
-      );
-    });
-
-    it("uses a successfully fetched materially different canonical URL", async () => {
-      const result = await getPage({
-        url: `${baseUrl}/canonical-source`,
-        root,
-        assets: false,
-        headers: [{ name: "Authorization", value: "secret" }],
-        useAsync: false
-      });
-      const document = parseDocument(await readFile(result.path, "utf8"));
-      expect(result.requestedUrl).toBe(`${baseUrl}/canonical-source`);
-      expect(result.sourceUrl).toBe(`${baseUrl}/canonical-target`);
-      expect(document?.markdown).toContain("Canonical article.");
-      expect(document?.frontmatter.canonical_url).toBe(`${baseUrl}/canonical-target`);
-      expect(conditionalHeaders.map((request) => request.path)).toEqual([
-        "/canonical-source",
-        "/canonical-target"
-      ]);
-    });
-
-    it("keeps the original page when its canonical URL cannot be fetched", async () => {
-      const result = await getPage({
-        url: `${baseUrl}/canonical-unavailable`,
-        root,
-        assets: false,
-        useAsync: false
-      });
-      const document = parseDocument(await readFile(result.path, "utf8"));
-      expect(result.sourceUrl).toBe(`${baseUrl}/canonical-unavailable`);
-      expect(document?.markdown).toContain("Original article remains available.");
-      expect(result.warnings).toContainEqual(
-        expect.objectContaining({ code: "CANONICAL_FETCH_FAILED" })
-      );
-    });
     expect(result.status).toBe("saved");
     expect(result.assets.some((asset) => asset.status === "saved")).toBe(true);
     const document = await readFile(result.path, "utf8");
@@ -444,6 +394,59 @@ describe("getPage", () => {
       useAsync: false
     });
     expect(skipped.status).toBe("skipped");
+  });
+
+  it("does not refetch a canonical URL that differs only by query", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/canonical-query?from=alias`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    expect(
+      conditionalHeaders.filter((request) =>
+        request.path.startsWith("/canonical-query")
+      )
+    ).toEqual([{ path: "/canonical-query?from=alias" }]);
+    const document = parseDocument(await readFile(result.path, "utf8"));
+    expect(result.sourceUrl).toBe(`${baseUrl}/canonical-query?from=alias`);
+    expect(document?.frontmatter.canonical_url).toBe(
+      `${baseUrl}/canonical-query?canonical=1`
+    );
+  });
+
+  it("uses a successfully fetched materially different canonical URL", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/canonical-source`,
+      root,
+      assets: false,
+      headers: [{ name: "Authorization", value: "secret" }],
+      useAsync: false
+    });
+    const document = parseDocument(await readFile(result.path, "utf8"));
+    expect(result.requestedUrl).toBe(`${baseUrl}/canonical-source`);
+    expect(result.sourceUrl).toBe(`${baseUrl}/canonical-target`);
+    expect(document?.markdown).toContain("Canonical article.");
+    expect(document?.frontmatter.canonical_url).toBe(`${baseUrl}/canonical-target`);
+    expect(conditionalHeaders.map((request) => request.path)).toEqual([
+      "/canonical-source",
+      "/canonical-target"
+    ]);
+  });
+
+  it("keeps the original page when its canonical URL cannot be fetched", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/canonical-unavailable`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const document = parseDocument(await readFile(result.path, "utf8"));
+    expect(result.sourceUrl).toBe(`${baseUrl}/canonical-unavailable`);
+    expect(document?.markdown).toContain("Original article remains available.");
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: "CANONICAL_FETCH_FAILED" })
+    );
   });
 
   it.each([
