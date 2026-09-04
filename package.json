@@ -4,7 +4,7 @@
   "description": "Save web pages as Markdown in a ghq-inspired filesystem layout.",
   "type": "module",
   "bin": {
-    "mdhq": "dist/cli.js"
+    "mdhq": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,7 +29,6 @@
     "test": "vitest run",
     "test:package": "node scripts/package-smoke.mjs",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run typecheck && npm test && npm run test:package",
     "prepack": "npm run build"
   },
   "keywords": [
