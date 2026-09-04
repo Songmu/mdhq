@@ -251,6 +251,14 @@ describe("getPage", () => {
           );
         return;
       }
+      if (request.url === "/slash-alias") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            `<html><head><title>Slash alias</title><link rel="canonical" href="${baseUrl}/slash-alias/"></head><body><article><p>Slash alias article content.</p><a href="child">Child</a><img src="image.png" alt="Image"></article></body></html>`
+          );
+        return;
+      }
       if (request.url?.startsWith("/tracking-page")) {
         if (request.headers["if-none-match"]) {
           response.writeHead(304).end();
@@ -400,6 +408,7 @@ describe("getPage", () => {
       assets: false,
       useAsync: false
     });
+
     expect(result.requestedUrl).toBe(
       `${baseUrl}/canonical-source?utm_source=newsletter`
     );
@@ -422,6 +431,20 @@ describe("getPage", () => {
     expect(parsed?.markdown).toContain(
       `![Query image](${baseUrl}/canonical-source?image=1)`
     );
+  });
+
+  it("uses the final response URL as the base for a slash canonical alias", async () => {
+    const result = await getPage({
+      url: `${baseUrl}/slash-alias`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    expect(result.sourceUrl).toBe(`${baseUrl}/slash-alias/`);
+    const parsed = parseDocument(await readFile(result.path, "utf8"));
+    expect(parsed?.frontmatter.source).toBe(`${baseUrl}/slash-alias/`);
+    expect(parsed?.markdown).toContain(`[Child](${baseUrl}/child)`);
+    expect(parsed?.markdown).toContain(`![Image](${baseUrl}/image.png)`);
   });
 
   it("keeps the fast pre-fetch skip after tracking cleanup", async () => {

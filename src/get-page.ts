@@ -335,7 +335,7 @@ async function getPageAttempt(
     responseHeadersAllowed && hasCredentialHeaders(http.headers);
   const converted = await convertHtml({
     html: fetched.html,
-    url: normalizedSource,
+    url: finalResponseUrl,
     defuddle: {
       ...loaded.config.defuddle,
       fetch: fetchWithEnvProxy,
@@ -349,7 +349,7 @@ async function getPageAttempt(
   let metadata = converted.metadata;
   if (converted.metadata.image) {
     try {
-      const image = new URL(converted.metadata.image, normalizedSource);
+      const image = new URL(converted.metadata.image, finalResponseUrl);
       if (image.protocol !== "http:" && image.protocol !== "https:") {
         throw new TypeError(`Unsupported image URL scheme: ${image.protocol}`);
       }
@@ -363,11 +363,14 @@ async function getPageAttempt(
       warn({
         code: "INVALID_IMAGE_URL",
         message: `Invalid representative image URL: ${converted.metadata.image}`,
-        url: sourceUrl
+        url: finalResponseUrl.href
       });
     }
   }
-  const transformed = transformMarkdown(converted.markdown, sourceUrl);
+  const transformed = transformMarkdown(
+    converted.markdown,
+    finalResponseUrl.href
+  );
   const assetsEnabled = options.assets ?? loaded.config.assets ?? true;
   const localized = assetsEnabled
     ? await localizeAssets({
@@ -376,7 +379,7 @@ async function getPageAttempt(
         ...(metadata.image ? { representativeImage: metadata.image } : {}),
         markdownPath,
         root,
-        baseUrl: sourceUrl,
+        baseUrl: finalResponseUrl.href,
         http: responseHeadersAllowed ? http : { ...http, headers: [] },
         warn
       })

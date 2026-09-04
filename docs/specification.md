@@ -102,10 +102,10 @@ create it.
    `urlpurify` tracking-parameter removal.
 8. Recalculate configuration and destination from the normalized source and
    check the final destination for another same-identity skip.
-9. Convert the fetched HTML to Markdown with Defuddle using the normalized
-   source as its base URL.
-10. Normalize ordinary links and discover image links using the normalized
-    source.
+9. Convert the fetched HTML to Markdown with Defuddle using the final response
+   URL as its base URL.
+10. Normalize ordinary links and discover image links using the final response
+    URL.
 11. Download supported images and rewrite successful image destinations.
 12. Normalize the Markdown body and calculate its SHA-256 content digest.
 13. Build YAML frontmatter.
@@ -326,9 +326,6 @@ After redirects, mdhq examines `link` elements whose whitespace-separated
 - Its normalized origin and canonical pathname must equal those of the final
   response URL. Scheme, normalized host, port, and pathname aliases therefore
   cannot point to another content location.
-- Its URL resolution directory must also match the final response URL, so an
-  alias such as `/article` to `/article/` is rejected rather than changing the
-  targets of relative links and images.
 - An accepted canonical is WHATWG-serialized and has its fragment removed. It
   is not passed through `urlpurify`.
 
@@ -338,9 +335,11 @@ unwrapping is not used. The result is validated as HTTP(S), WHATWG-serialized,
 and stripped of its fragment.
 
 The normalized source is used for host/path configuration, storage identity,
-destination, Defuddle conversion, ordinary links, images, assets, and
-frontmatter. The final response URL remains internal to HTTP redirect and
-credential handling.
+destination, and frontmatter. The final response URL is used as the base for
+Defuddle conversion, ordinary links, images, and assets, as well as for HTTP
+redirect and credential handling. This allows storage-equivalent canonical
+aliases such as `/article` and `/article/` without changing relative URL
+targets.
 
 Re-fetching a path-divergent canonical target is not currently supported.
 
@@ -481,14 +480,14 @@ Defuddle's exact whitespace.
 
 For ordinary links:
 
-- relative URLs are resolved against the normalized source URL
+- relative URLs are resolved against the final response URL
 - absolute URLs are retained
 - fragment-only links are retained
 - reference-style link definitions are resolved and normalized
 
 For images:
 
-- relative destinations are resolved against the normalized source URL
+- relative destinations are resolved against the final response URL
 - reference-style image definitions are resolved and localized
 - absolute image URLs are collected for asset localization
 - duplicate source URLs are fetched once

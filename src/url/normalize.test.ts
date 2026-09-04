@@ -24,13 +24,13 @@ describe("URL normalization", () => {
     ).toBe("https://example.com/article?view=full");
   });
 
-  it("rejects a canonical alias that changes relative URL resolution", () => {
+  it("accepts a trailing-slash canonical storage alias", () => {
     expect(
       normalizeSourceUrl(
         '<html><head><link rel="canonical" href="/article/?view=full"></head></html>',
         "https://example.com/article?utm_source=newsletter"
       )
-    ).toBe("https://example.com/article");
+    ).toBe("https://example.com/article/?view=full");
   });
 
   it("resolves a relative canonical against a valid document base", () => {
