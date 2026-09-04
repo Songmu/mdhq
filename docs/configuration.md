@@ -232,6 +232,20 @@ not IDNA- or Unicode-normalized.
 `entryQueryKey` selects the only query parameter that contributes to URL
 identity and the storage path.
 
+When it is omitted, mdhq automatically recognizes a conservative set of
+article URL patterns: `entry_id`; WordPress `p`, `page_id`, and
+`attachment_id` outside root, `index.php`, and `/wp-*` paths; Joomla
+`index.php?option=com_content&view=article&id=…`; Movable Type entry CGI URLs;
+and `id` on `article.php`, `entry.php`, `post.php`, `view.php`, or
+`detail.php`. Explicit strings override this detection, while `null` disables
+it. Empty or repeated selected parameters never qualify. Other query
+parameters, including generic `id`, are ignored.
+
+Some recognized systems require multiple parameters. They are all included in
+the identity, in a fixed order, and their storage filename combines
+`key=value` pairs. This prevents, for example, Joomla articles from colliding
+with other `index.php?id=…` components.
+
 Rules:
 
 - A host-level value applies to all paths by default.

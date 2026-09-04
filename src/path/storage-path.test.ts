@@ -28,7 +28,7 @@ describe("storagePathForUrl", () => {
         storagePathForUrl({
           root,
           url: "https://example.com/blog/blog.php?entry_id=123",
-          entryQueryKey: "entry_id"
+          entryQueryKeys: "entry_id"
         })
       )
     ).toBe(["example.com", "blog", "blog.php", "123.md"].join(path.sep));
@@ -44,6 +44,28 @@ describe("storagePathForUrl", () => {
         storagePathForUrl({ root, url: "http://[2001:db8::1]:8080/x" })
       )
     ).toBe(["[2001_db8__1]_8080", "x.md"].join(path.sep));
+  });
+
+  it("automatically uses CMS entry identifiers", () => {
+    expect(
+      path.relative(
+        root,
+        storagePathForUrl({ root, url: "https://example.com/article.php?entry_id=123" })
+      )
+    ).toBe(["example.com", "article.php", "123.md"].join(path.sep));
+    expect(
+      path.relative(
+        root,
+        storagePathForUrl({
+          root,
+          url: "https://example.com/index.php?option=com_content&view=article&id=123"
+        })
+      )
+    ).toBe(
+      ["example.com", "index.php", "option=com_content&view=article&id=123.md"].join(
+        path.sep
+      )
+    );
   });
 
   it("keeps special hostnames inside the storage root", () => {

@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { MdhqError } from "../errors.js";
-import { createUrlIdentity, parseHttpUrl } from "../url/identity.js";
+import {
+  createUrlIdentity,
+  parseHttpUrl,
+  resolveEntryQueryKeys,
+  type EntryQueryKeys
+} from "../url/identity.js";
 import { decodeUrlPathSegment, storageBasename } from "../url/pathname.js";
 const INVALID_CHARACTERS = /[\/\\:*?"<>|\u0000-\u001f\u007f]/u;
 const WINDOWS_DEVICES =
@@ -78,20 +83,25 @@ function hostDirectory(url: URL): string {
 export interface StoragePathOptions {
   root: string;
   url: string | URL;
-  entryQueryKey?: string;
+  entryQueryKeys?: EntryQueryKeys;
 }
 
 export function storagePathForUrl(options: StoragePathOptions): string {
   const url = parseHttpUrl(options.url);
-  const identity = createUrlIdentity(url, options.entryQueryKey);
+  const entryQueryKeys = resolveEntryQueryKeys(url, options.entryQueryKeys);
+  const identity = createUrlIdentity(url, entryQueryKeys);
   const rawSegments = url.pathname.split("/").filter(Boolean);
   const directories = rawSegments.slice(0, -1).map((segment) => fitSegment(segment));
   let filename: string;
 
-  if (identity.entryValue !== undefined) {
+  if (identity.entryParameters) {
     const pageSegment = rawSegments.at(-1) ?? "index";
     directories.push(fitSegment(pageSegment));
-    filename = `${fitSegment(encodeURIComponent(identity.entryValue), ".md")}.md`;
+    const entryName =
+      identity.entryParameters.length === 1
+        ? identity.entryParameters[0]![1]
+        : identity.entryParameters.map(([key, value]) => `${key}=${value}`).join("&");
+    filename = `${fitSegment(encodeURIComponent(entryName), ".md")}.md`;
   } else if (rawSegments.length === 0) {
     filename = "index.md";
   } else {

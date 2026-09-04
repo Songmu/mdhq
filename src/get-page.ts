@@ -22,6 +22,7 @@ import type { GetPageOptions, GetPageResult, MdhqWarning } from "./types.js";
 import {
   normalizeHost,
   parseHttpUrl,
+  resolveEntryQueryKeys,
   sameHttpTarget
 } from "./url/identity.js";
 
@@ -133,16 +134,19 @@ async function getPageAttempt(
     requested.pathname,
     loaded.config.hosts ?? {}
   );
-  const requestedEntryKey = requestedConfig?.entryQueryKey ?? undefined;
+  const requestedEntryQueryKeys = resolveEntryQueryKeys(
+    requested,
+    requestedConfig?.entryQueryKey
+  );
   const requestedPath = storagePathForUrl({
     root,
     url: requested,
-    ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
+    ...(requestedEntryQueryKeys ? { entryQueryKeys: requestedEntryQueryKeys } : {})
   });
   const requestedExisting = await inspectDestination(
     requestedPath,
     fetchUrl,
-    requestedEntryKey,
+    requestedEntryQueryKeys,
     root
   );
   if (requestedExisting && !options.update) {
@@ -249,7 +253,7 @@ async function getPageAttempt(
       update: true,
       expectedContent: requestedExisting.content,
       root,
-      ...(requestedEntryKey ? { entryQueryKey: requestedEntryKey } : {})
+      ...(requestedEntryQueryKeys ? { entryQueryKeys: requestedEntryQueryKeys } : {})
     });
     if (storageStatus === "conflicted") {
       if (retriesRemaining === 0) {
@@ -280,16 +284,16 @@ async function getPageAttempt(
     finalUrl.pathname,
     loaded.config.hosts ?? {}
   );
-  const entryQueryKey = matchedConfig?.entryQueryKey ?? undefined;
+  const entryQueryKeys = resolveEntryQueryKeys(finalUrl, matchedConfig?.entryQueryKey);
   const markdownPath = storagePathForUrl({
     root,
     url: finalUrl,
-    ...(entryQueryKey ? { entryQueryKey } : {})
+    ...(entryQueryKeys ? { entryQueryKeys } : {})
   });
   const existing = await inspectDestination(
     markdownPath,
     finalUrl.href,
-    entryQueryKey,
+    entryQueryKeys,
     root
   );
   if (
@@ -421,7 +425,7 @@ async function getPageAttempt(
       ? { expectedContent: expectedExisting?.content ?? null }
       : {}),
     root,
-    ...(entryQueryKey ? { entryQueryKey } : {})
+    ...(entryQueryKeys ? { entryQueryKeys } : {})
   });
   if (storageStatus === "conflicted") {
     if (retriesRemaining === 0) {
