@@ -105,7 +105,8 @@ conditional updates. It does not add `type` or `tags` by default; use
 
 `source` is normalized after redirects. mdhq accepts an HTML canonical URL
 only when its normalized origin and pathname match the fetched page; otherwise
-it removes known tracking parameters with `urlpurify`. Fragments are removed.
+it removes known tracking parameters with `urlpurify`, while retaining
+functional WordPress preview parameters. Fragments are removed.
 Queryless sources use the normal ghq-inspired path. Sources with a query use a
 configured `entryQueryKey` value when available, or a deterministic MD5
 filename derived from the final path segment and ordered query string.

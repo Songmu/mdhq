@@ -77,4 +77,14 @@ describe("URL normalization", () => {
       )
     ).toBe("https://example.com/article?id=123");
   });
+
+  it("retains functional WordPress preview parameters", () => {
+    expect(
+      normalizeSourceUrlWithoutCanonical(
+        "https://example.com/article?preview=true&preview_id=123&preview_nonce=secret&utm_source=newsletter"
+      )
+    ).toBe(
+      "https://example.com/article?preview=true&preview_id=123&preview_nonce=secret"
+    );
+  });
 });

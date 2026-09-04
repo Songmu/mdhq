@@ -332,7 +332,9 @@ After redirects, mdhq examines `link` elements whose whitespace-separated
 When canonical is absent or rejected, mdhq applies
 `urlpurify.stripTrackingParams()` to the final response URL. URL wrapper
 unwrapping is not used. The result is validated as HTTP(S), WHATWG-serialized,
-and stripped of its fragment.
+and stripped of its fragment. Functional WordPress preview parameters
+(`preview`, `preview_id`, and `preview_nonce`) are retained because mdhq
+accepts arbitrary page URLs rather than feed URLs only.
 
 The normalized source is used for host/path configuration, storage identity,
 destination, and frontmatter. The final response URL is used as the base for
