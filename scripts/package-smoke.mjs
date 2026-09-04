@@ -41,7 +41,7 @@ try {
   );
   execFileSync(
     process.execPath,
-    ["--input-type=module", "-e", 'await import("mdhq")'],
+    ["--input-type=module", "-e", 'await import("@songmu/mdhq")'],
     { cwd: consumerDirectory, stdio: "inherit" }
   );
   await access(
@@ -70,11 +70,25 @@ try {
     throw new Error("Installed mdhq list produced unexpected output");
   }
   await readFile(
-    path.join(consumerDirectory, "node_modules", "mdhq", "docs", "specification.md"),
+    path.join(
+      consumerDirectory,
+      "node_modules",
+      "@songmu",
+      "mdhq",
+      "docs",
+      "specification.md"
+    ),
     "utf8"
   );
   const declarations = await readFile(
-    path.join(consumerDirectory, "node_modules", "mdhq", "dist", "index.d.ts"),
+    path.join(
+      consumerDirectory,
+      "node_modules",
+      "@songmu",
+      "mdhq",
+      "dist",
+      "index.d.ts"
+    ),
     "utf8"
   );
   if (!declarations.includes("MdhqConfig")) {

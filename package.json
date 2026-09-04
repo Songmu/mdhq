@@ -1,5 +1,5 @@
 {
-  "name": "mdhq",
+  "name": "@songmu/mdhq",
   "version": "0.0.1",
   "description": "Save web pages as Markdown in a ghq-inspired filesystem layout.",
   "type": "module",

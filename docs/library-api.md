@@ -7,7 +7,7 @@ import {
   convertHtml,
   getPage,
   MdhqError
-} from "mdhq";
+} from "@songmu/mdhq";
 ```
 
 Runtime exports:
@@ -32,8 +32,8 @@ Type-only exports:
 TypeScript callers should import types with `import type`:
 
 ```ts
-import { getPage, MdhqError } from "mdhq";
-import type { GetPageOptions, GetPageResult, MdhqConfig } from "mdhq";
+import { getPage, MdhqError } from "@songmu/mdhq";
+import type { GetPageOptions, GetPageResult, MdhqConfig } from "@songmu/mdhq";
 ```
 
 ## `convertHtml`
