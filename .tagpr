@@ -1,55 +1,6 @@
-# config file for the tagpr in git config format
-# The tagpr generates the initial configuration, which you can rewrite to suit your environment.
-# CONFIGURATIONS:
-#   tagpr.releaseBranch
-#       Generally, it is "main." It is the branch for releases. The tagpr tracks this branch,
-#       creates or updates a pull request as a release candidate, or tags when they are merged.
-#
-#   tagpr.versionFile
-#       File that holds the semantic version, kept in sync with the git tag: the next
-#       version is written into it when the release pull request is prepared, and read
-#       back from it to decide the tag at merge time (so editing the version in the pull
-#       request works). Often this is a meta-information file such as gemspec, setup.cfg,
-#       or package.json, but a source file such as version.go or Bar.pm is also common.
-#       If left empty, tagpr scans the repository and picks a likely file automatically.
-#       Specify "-" to rely on git tags only and skip file updates entirely.
-#       You can specify multiple version files by comma separated strings.
-#
-#   tagpr.vPrefix
-#       Flag whether or not v-prefix is added to semver when git tagging. (e.g. v1.2.3 if true)
-#       This is only a tagging convention, not how it is described in the version file.
-#
-#   tagpr.changelog (Optional)
-#       Flag whether or not changelog is added or changed during the release.
-#
-#   tagpr.command (Optional)
-#       Command to change files just before release and versioning.
-#
-#   tagpr.postVersionCommand (Optional)
-#       Command to change files just after versioning.
-#
-#   tagpr.template (Optional)
-#       Pull request template file in go template format
-#
-#   tagpr.templateText (Optional)
-#       Pull request template text in go template format
-#
-#   tagpr.release (Optional)
-#       GitHub Release creation behavior after tagging [true, draft, false]
-#       If this value is not set, the release is to be created.
-#
-#   tagpr.majorLabels (Optional)
-#       Label of major update targets. Default is [major]
-#
-#   tagpr.minorLabels (Optional)
-#       Label of minor update targets. Default is [minor]
-#
-#   tagpr.commitPrefix (Optional)
-#       Prefix of commit message. Default is "[tagpr]"
-#
 [tagpr]
 	releaseBranch = main
 	versionFile = package.json
 	postVersionCommand = npm install --package-lock-only --ignore-scripts
 	vPrefix = true
-	release = false
+	release = draft
