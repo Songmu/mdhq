@@ -326,6 +326,9 @@ After redirects, mdhq examines `link` elements whose whitespace-separated
 - Its normalized origin and canonical pathname must equal those of the final
   response URL. Scheme, normalized host, port, and pathname aliases therefore
   cannot point to another content location.
+- Its URL resolution directory must also match the final response URL, so an
+  alias such as `/article` to `/article/` is rejected rather than changing the
+  targets of relative links and images.
 - An accepted canonical is WHATWG-serialized and has its fragment removed. It
   is not passed through `urlpurify`.
 

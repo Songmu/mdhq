@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { serializeDocument } from "../frontmatter/frontmatter.js";
 import { saveDocument } from "./save.js";
@@ -53,6 +54,7 @@ describe("saveDocument", () => {
       sourceUrl: "https://example.com/page",
       update: false
     });
+
     expect(
       await saveDocument({
         path: file,
@@ -62,6 +64,31 @@ describe("saveDocument", () => {
       })
     ).toBe("updated");
     expect(await readFile(file, "utf8")).toContain("second");
+  });
+
+  it("rejects an entry key that collides with a generic query digest path", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "mdhq-save-"));
+    const file = path.join(directory, "query.md");
+    const genericSource = "https://example.com/path/?value=1";
+    const digest = createHash("md5").update("?value=1").digest("hex");
+    await saveDocument({
+      path: file,
+      content: serializeDocument({ source: genericSource }, "generic"),
+      sourceUrl: genericSource,
+      update: false
+    });
+    await expect(
+      saveDocument({
+        path: file,
+        content: serializeDocument(
+          { source: `https://example.com/path/?md5=${digest}` },
+          "entry"
+        ),
+        sourceUrl: `https://example.com/path/?md5=${digest}`,
+        entryQueryKey: "md5",
+        update: false
+      })
+    ).rejects.toMatchObject({ code: "PATH_COLLISION" });
   });
 
   it("does not replace a document that changed after inspection", async () => {

@@ -80,9 +80,9 @@ export function createUrlIdentity(
 export function serializeUrlIdentity(identity: UrlIdentity): string {
   const entry =
     identity.entryKey && identity.entryValue
-      ? `?${encodeURIComponent(identity.entryKey)}=${encodeURIComponent(identity.entryValue)}`
+      ? `?entry-key=${encodeURIComponent(identity.entryKey)}&entry-value=${encodeURIComponent(identity.entryValue)}`
       : identity.queryHash
-        ? `?md5=${identity.queryHash}`
+        ? `?query-md5=${identity.queryHash}`
         : "";
   return `//${identity.host}${identity.pathname}${entry}`;
 }

@@ -392,7 +392,10 @@ async function getPageAttempt(
   const contentDigest = markdownContentDigest(localized.markdown);
   const lastModified = normalizeLastModified(fetched.lastModified);
   const vary = varyNames(fetched.vary);
-  const validatorsReusable = vary.length === 0 && !responseCredentialed;
+  const validatorsReusable =
+    vary.length === 0 &&
+    !responseCredentialed &&
+    sameHttpTarget(sourceUrl, finalResponseUrl);
   const etag = validatorsReusable ? fetched.etag : undefined;
   const reusableLastModified = validatorsReusable ? lastModified : undefined;
   const nextFrontmatterOptions = {

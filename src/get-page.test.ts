@@ -453,12 +453,15 @@ describe("getPage", () => {
 
   it("does not reuse validators when normalization changes the HTTP target", async () => {
     const requestedUrl = `${baseUrl}/tracking-page?utm_source=newsletter`;
-    await getPage({
+    const first = await getPage({
       url: requestedUrl,
       root,
       assets: false,
       useAsync: false
     });
+    expect(
+      parseDocument(await readFile(first.path, "utf8"))?.frontmatter
+    ).not.toHaveProperty("etag");
     const updated = await getPage({
       url: requestedUrl,
       root,
@@ -475,6 +478,20 @@ describe("getPage", () => {
     expect(updateRequest).toEqual({
       path: "/tracking-page?utm_source=newsletter"
     });
+
+    const direct = await getPage({
+      url: `${baseUrl}/tracking-page`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(direct.status).toBe("updated");
+    expect(
+      conditionalHeaders
+        .filter((request) => request.path === "/tracking-page")
+        .at(-1)
+    ).toEqual({ path: "/tracking-page" });
   });
 
   it.each([

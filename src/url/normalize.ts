@@ -13,6 +13,10 @@ function normalizedOrigin(url: URL): string {
   return `${url.protocol}//${normalizeHost(url)}`;
 }
 
+function resolutionDirectory(url: URL): string {
+  return new URL(".", url).pathname;
+}
+
 function canonicalUrl(html: string, finalUrl: URL): URL | undefined {
   let document: Document;
   try {
@@ -54,7 +58,8 @@ function isCanonicalEquivalent(finalUrl: URL, canonical: URL): boolean {
   return (
     normalizedOrigin(finalUrl) === normalizedOrigin(canonical) &&
     canonicalPathname(finalUrl.pathname || "/") ===
-      canonicalPathname(canonical.pathname || "/")
+      canonicalPathname(canonical.pathname || "/") &&
+    resolutionDirectory(finalUrl) === resolutionDirectory(canonical)
   );
 }
 

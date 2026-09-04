@@ -32,7 +32,7 @@ describe("URL identity", () => {
       serializeUrlIdentity(
         createUrlIdentity("https://example.com/blog.php?id=123&ignore=1", "id")
       )
-    ).toBe("//example.com/blog.php?id=123");
+    ).toBe("//example.com/blog.php?entry-key=id&entry-value=123");
   });
 
   it("uses the first non-empty configured entry value", () => {
@@ -43,7 +43,7 @@ describe("URL identity", () => {
           "id"
         )
       )
-    ).toBe("//example.com/blog.php?id=123");
+    ).toBe("//example.com/blog.php?entry-key=id&entry-value=123");
   });
 
   it("hashes the ordered query tail without a usable entry value", () => {
@@ -52,6 +52,17 @@ describe("URL identity", () => {
     expect(left.queryHash).toMatch(/^[a-f0-9]{32}$/u);
     expect(reordered.queryHash).toMatch(/^[a-f0-9]{32}$/u);
     expect(left.queryHash).not.toBe(reordered.queryHash);
+  });
+
+  it("separates generic query hashes from entry-key identities", () => {
+    const generic = createUrlIdentity("https://example.com/path/?value=1");
+    const entry = createUrlIdentity(
+      `https://example.com/path/?md5=${generic.queryHash}`,
+      "md5"
+    );
+    expect(serializeUrlIdentity(generic)).not.toBe(
+      serializeUrlIdentity(entry)
+    );
   });
 
   it("normalizes Unicode and percent-escape spelling in paths", () => {
