@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { sanitizePathSegment, storagePathForUrl } from "./storage-path.js";
 
@@ -32,6 +33,61 @@ describe("storagePathForUrl", () => {
         })
       )
     ).toBe(["example.com", "blog", "blog.php", "123.md"].join(path.sep));
+  });
+
+  it("uses the first non-empty entry query value", () => {
+    expect(
+      path.relative(
+        root,
+        storagePathForUrl({
+          root,
+          url: "https://example.com/blog/blog.php?entry_id=&entry_id=123",
+          entryQueryKey: "entry_id"
+        })
+      )
+    ).toBe(["example.com", "blog", "blog.php", "123.md"].join(path.sep));
+  });
+
+  it("hashes the final path segment and query for file-like paths", () => {
+    const digest = createHash("md5").update("to.php?id=123").digest("hex");
+    expect(
+      path.relative(
+        root,
+        storagePathForUrl({
+          root,
+          url: "https://example.com/path/to.php?id=123"
+        })
+      )
+    ).toBe(["example.com", "path", `${digest}.md`].join(path.sep));
+  });
+
+  it("hashes only the query below a trailing-slash path", () => {
+    const digest = createHash("md5").update("?id=123").digest("hex");
+    expect(
+      path.relative(
+        root,
+        storagePathForUrl({
+          root,
+          url: "https://example.com/path/to/?id=123"
+        })
+      )
+    ).toBe(["example.com", "path", "to", `${digest}.md`].join(path.sep));
+  });
+
+  it("falls back to a query hash when the configured entry value is empty", () => {
+    const digest = createHash("md5")
+      .update("blog.php?entry_id=&lang=en")
+      .digest("hex");
+    expect(
+      path.relative(
+        root,
+        storagePathForUrl({
+          root,
+          url: "https://example.com/blog/blog.php?entry_id=&lang=en",
+          entryQueryKey: "entry_id"
+        })
+      )
+    ).toBe(["example.com", "blog", `${digest}.md`].join(path.sep));
   });
 
   it("uses Windows-safe IPv6 host directories", () => {

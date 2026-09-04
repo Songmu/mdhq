@@ -243,6 +243,29 @@ describe("getPage", () => {
           );
         return;
       }
+      if (request.url?.startsWith("/canonical-source")) {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            `<html><head><title>Canonical source</title><link rel="canonical" href="${baseUrl}/canonical-source?view=clean#section"></head><body><article><p>Canonical article content.</p><a href="?download=1">Download</a><img src="?image=1" alt="Query image"></article></body></html>`
+          );
+        return;
+      }
+      if (request.url?.startsWith("/tracking-page")) {
+        if (request.headers["if-none-match"]) {
+          response.writeHead(304).end();
+          return;
+        }
+        response
+          .writeHead(200, {
+            "content-type": "text/html",
+            etag: '"tracking"'
+          })
+          .end(
+            "<html><head><title>Tracking cleanup</title></head><body><article><p>Stable tracking-cleaned article content.</p></article></body></html>"
+          );
+        return;
+      }
       if (request.url === "/invalid-last-modified") {
         response
           .writeHead(200, {
@@ -325,6 +348,7 @@ describe("getPage", () => {
       useAsync: false,
       now: () => new Date("2026-08-31T12:00:00+09:00")
     });
+
     expect(result.status).toBe("saved");
     expect(result.assets.some((asset) => asset.status === "saved")).toBe(true);
     const document = await readFile(result.path, "utf8");
@@ -353,6 +377,104 @@ describe("getPage", () => {
       useAsync: false
     });
     expect(skipped.status).toBe("skipped");
+  });
+
+  it("uses normalized canonical source for storage, frontmatter, and URL bases", async () => {
+    const requestedUrl = `${baseUrl}/canonical-source?utm_source=newsletter#top`;
+    const sourceUrl = `${baseUrl}/canonical-source?view=clean`;
+    const configPath = path.join(root, "canonical-config.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        hosts: {
+          "*": {
+            entryQueryKey: "view"
+          }
+        }
+      })
+    );
+    const result = await getPage({
+      url: requestedUrl,
+      root,
+      configPath,
+      assets: false,
+      useAsync: false
+    });
+    expect(result.requestedUrl).toBe(
+      `${baseUrl}/canonical-source?utm_source=newsletter`
+    );
+    expect(result.sourceUrl).toBe(sourceUrl);
+    expect(path.relative(root, result.path)).toBe(
+      [
+        `127.0.0.1_${new URL(baseUrl).port}`,
+        "canonical-source",
+        "clean.md"
+      ].join(path.sep)
+    );
+    const parsed = parseDocument(await readFile(result.path, "utf8"));
+    expect(parsed?.frontmatter).toMatchObject({
+      source: sourceUrl,
+      requested_url: `${baseUrl}/canonical-source?utm_source=newsletter`
+    });
+    expect(parsed?.markdown).toContain(
+      `[Download](${baseUrl}/canonical-source?download=1)`
+    );
+    expect(parsed?.markdown).toContain(
+      `![Query image](${baseUrl}/canonical-source?image=1)`
+    );
+  });
+
+  it("keeps the fast pre-fetch skip after tracking cleanup", async () => {
+    const requestedUrl = `${baseUrl}/tracking-page?utm_source=newsletter`;
+    const first = await getPage({
+      url: requestedUrl,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const requestsAfterFirst = conditionalHeaders.filter(
+      (request) => request.path === "/tracking-page?utm_source=newsletter"
+    ).length;
+    const second = await getPage({
+      url: requestedUrl,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    expect(first.sourceUrl).toBe(`${baseUrl}/tracking-page`);
+    expect(second.status).toBe("skipped");
+    expect(second.path).toBe(first.path);
+    expect(
+      conditionalHeaders.filter(
+        (request) => request.path === "/tracking-page?utm_source=newsletter"
+      )
+    ).toHaveLength(requestsAfterFirst);
+  });
+
+  it("does not reuse validators when normalization changes the HTTP target", async () => {
+    const requestedUrl = `${baseUrl}/tracking-page?utm_source=newsletter`;
+    await getPage({
+      url: requestedUrl,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const updated = await getPage({
+      url: requestedUrl,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.status).toBe("unchanged");
+    const updateRequest = conditionalHeaders
+      .filter(
+        (request) => request.path === "/tracking-page?utm_source=newsletter"
+      )
+      .at(-1);
+    expect(updateRequest).toEqual({
+      path: "/tracking-page?utm_source=newsletter"
+    });
   });
 
   it.each([
@@ -963,27 +1085,35 @@ describe("getPage", () => {
     expect(await readFile(first.path, "utf8")).toBe(before);
   });
 
-  it("does not reuse validators for a different query target with the same storage identity", async () => {
+  it("stores different query targets separately without reusing validators", async () => {
     const first = await getPage({
       url: `${baseUrl}/identity-query?a=1`,
       root,
       assets: false,
       useAsync: false
     });
-    const updated = await getPage({
+    const second = await getPage({
       url: `${baseUrl}/identity-query?b=2`,
       root,
       assets: false,
       update: true,
       useAsync: false
     });
-    expect(updated.status).toBe("updated");
+    expect(second.status).toBe("saved");
+    expect(second.path).not.toBe(first.path);
     expect(conditionalHeaders).toContainEqual({ path: "/identity-query?b=2" });
-    const document = parseDocument(await readFile(first.path, "utf8"));
-    expect(document?.markdown).toContain(
+    expect(
+      conditionalHeaders.find((request) => request.path === "/identity-query?b=2")
+    ).not.toHaveProperty("etag");
+    const firstDocument = parseDocument(await readFile(first.path, "utf8"));
+    const secondDocument = parseDocument(await readFile(second.path, "utf8"));
+    expect(firstDocument?.markdown).toContain(
+      "First query target has original article content."
+    );
+    expect(secondDocument?.markdown).toContain(
       "Second query target has replacement article content."
     );
-    expect(document?.frontmatter.source).toBe(
+    expect(secondDocument?.frontmatter.source).toBe(
       `${baseUrl}/identity-query?b=2`
     );
   });

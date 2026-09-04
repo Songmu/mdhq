@@ -93,22 +93,31 @@ create it.
 
 1. Validate that the requested URL uses HTTP or HTTPS.
 2. Load the JSON configuration and collect unknown-key warnings.
-3. Resolve the storage root and host/path-specific entry query key.
-4. Check whether the requested URL already has a same-identity destination.
+3. Resolve the storage root and a pre-fetch host/path-specific entry query key.
+4. Remove known tracking parameters from the requested URL candidate and check
+   whether it already has a same-identity destination.
 5. Fetch the page when it cannot be skipped before network access.
-6. Resolve the final URL after redirects and recalculate configuration and
-   destination from that URL.
-7. Check the final destination for another same-identity skip.
-8. Convert the fetched HTML to Markdown with Defuddle.
-9. Normalize ordinary links and discover image links.
-10. Download supported images and rewrite successful image destinations.
-11. Normalize the Markdown body and calculate its SHA-256 content digest.
-12. Build YAML frontmatter.
-13. Save the Markdown with collision-safe create or update behavior.
+6. Resolve the final response URL after redirects.
+7. Derive the normalized source URL from an accepted HTML canonical URL or
+   `urlpurify` tracking-parameter removal.
+8. Recalculate configuration and destination from the normalized source and
+   check the final destination for another same-identity skip.
+9. Convert the fetched HTML to Markdown with Defuddle using the normalized
+   source as its base URL.
+10. Normalize ordinary links and discover image links using the normalized
+    source.
+11. Download supported images and rewrite successful image destinations.
+12. Normalize the Markdown body and calculate its SHA-256 content digest.
+13. Build YAML frontmatter.
+14. Save the Markdown with collision-safe create or update behavior.
 
-The final URL determines the destination and the `source` frontmatter field.
-The original URL is retained as `requested_url` only when it differs from the
-final URL.
+The normalized source determines the destination and the `source` frontmatter
+field. The fragment-free WHATWG-serialized original URL is retained as
+`requested_url` only when it differs from the normalized source. Intermediate
+redirect URLs are not stored.
+
+The pre-fetch skip is intentionally retained. When it succeeds, mdhq performs
+no request and cannot discover later redirect or canonical changes.
 
 ## HTTP behavior
 
@@ -136,8 +145,8 @@ With `update`, mdhq uses validators from a recognized existing destination:
 5. Otherwise perform an ordinary GET.
 
 Storage identity is intentionally broader than HTTP validator scope. A
-same-identity URL with a different scheme, query, or path alias is fetched
-without stored validators.
+same-identity URL with a different scheme, ignored secondary query parameter
+under an entry key, or path alias is fetched without stored validators.
 
 Automatic validators are sent only on the first request and are not forwarded
 after redirects. When a stored validator is available, it replaces any
@@ -271,12 +280,14 @@ Identity includes:
 - normalized host
 - canonical pathname
 - one configured entry query key and value, when present and non-empty
+- otherwise, the MD5 digest of the ordered query tail when a query remains
 
 Identity ignores:
 
 - the difference between HTTP and HTTPS
 - fragments
-- all query parameters except the selected entry query key
+- query parameters other than a selected non-empty entry key when such a key
+  is used
 
 Host normalization:
 
@@ -298,8 +309,37 @@ Path normalization:
 - removes a final recognized HTML extension for identity comparison
 - applies canonical percent encoding for identity comparison
 
-The first value returned for the configured entry query key is used. A missing
-or empty value causes the URL to use its normal path-based identity.
+The first non-empty value returned for the configured entry query key is used.
+When no non-empty value exists, a remaining query uses the generic query-tail
+MD5 identity.
+
+## Source URL normalization
+
+After redirects, mdhq examines `link` elements whose whitespace-separated
+`rel` tokens contain `canonical`, case-insensitively.
+
+- Exactly one canonical link must be present.
+- A relative canonical is resolved against the document base URL. A valid
+  `<base href>` is honored; an invalid base falls back to the final response
+  URL.
+- The resolved canonical must use HTTP or HTTPS.
+- Its normalized origin and canonical pathname must equal those of the final
+  response URL. Scheme, normalized host, port, and pathname aliases therefore
+  cannot point to another content location.
+- An accepted canonical is WHATWG-serialized and has its fragment removed. It
+  is not passed through `urlpurify`.
+
+When canonical is absent or rejected, mdhq applies
+`urlpurify.stripTrackingParams()` to the final response URL. URL wrapper
+unwrapping is not used. The result is validated as HTTP(S), WHATWG-serialized,
+and stripped of its fragment.
+
+The normalized source is used for host/path configuration, storage identity,
+destination, Defuddle conversion, ordinary links, images, assets, and
+frontmatter. The final response URL remains internal to HTTP redirect and
+credential handling.
+
+Re-fetching a path-divergent canonical target is not currently supported.
 
 ## Storage paths
 
@@ -347,13 +387,41 @@ https://example.com/blog/blog.php?entry_id=123
 -> example.com/blog/blog.php/123.md
 ```
 
-Other query parameters and the fragment do not affect the destination.
+Other query parameters and the fragment do not affect the destination when a
+non-empty entry value is selected.
 
-The query value comes from `URLSearchParams.get`, so percent escapes are
-decoded and `+` is interpreted as a space. The resulting value then uses the
-same NFC normalization, unsafe-character encoding, reserved-name handling,
-240-byte limit, and MD5 fallback as a URL path segment. A slash in the query
-value becomes `%2F` inside the filename and never creates another directory.
+Entry values are inspected in URL order and the first non-empty value is used,
+so percent escapes are decoded and `+` is interpreted as a space. The
+resulting value then uses the same NFC normalization, unsafe-character
+encoding, reserved-name handling, 240-byte limit, and MD5 fallback as a URL
+path segment. A slash in the query value becomes `%2F` inside the filename and
+never creates another directory.
+
+### Generic query destinations
+
+When a normalized source retains a query and has no usable configured entry
+value, mdhq creates a lowercase 32-character MD5 digest from UTF-8 bytes. Query
+parameter order is preserved.
+
+For a pathname not ending in `/`, the digest input is the final raw pathname
+segment followed by the serialized query including `?`:
+
+```text
+https://example.com/path/to.php?id=123
+MD5 input: to.php?id=123
+-> example.com/path/<md5>.md
+```
+
+For a pathname ending in `/`, the digest input is only the serialized query:
+
+```text
+https://example.com/path/to/?id=123
+MD5 input: ?id=123
+-> example.com/path/to/<md5>.md
+```
+
+If canonical selection or tracking cleanup removes the complete query, the
+normal queryless destination rules apply.
 
 ### Safe path segments
 
@@ -410,14 +478,14 @@ Defuddle's exact whitespace.
 
 For ordinary links:
 
-- relative URLs are resolved against the final page URL
+- relative URLs are resolved against the normalized source URL
 - absolute URLs are retained
 - fragment-only links are retained
 - reference-style link definitions are resolved and normalized
 
 For images:
 
-- relative destinations are resolved against the final page URL
+- relative destinations are resolved against the normalized source URL
 - reference-style image definitions are resolved and localized
 - absolute image URLs are collected for asset localization
 - duplicate source URLs are fetched once
@@ -552,8 +620,9 @@ Metadata fields are emitted when non-empty:
 
 mdhq-controlled fields:
 
-- `source`: final page URL
-- `requested_url`: original URL, only when different from `source`
+- `source`: normalized source URL
+- `requested_url`: fragment-free serialized original URL, only when different
+  from `source`
 - `created`: initial local acquisition time
 - `modified`: time of the latest meaningful Markdown note change
 - `etag`: HTTP ETag stored verbatim, when supplied

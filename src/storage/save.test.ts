@@ -22,10 +22,18 @@ describe("saveDocument", () => {
       await saveDocument({
         path: file,
         content: "unused",
-        sourceUrl: "http://example.com/page?ignored=1",
+        sourceUrl: "http://example.com/page#ignored",
         update: false
       })
     ).toBe("skipped");
+    await expect(
+      saveDocument({
+        path: file,
+        content: "query collision",
+        sourceUrl: "https://example.com/page?value=1",
+        update: false
+      })
+    ).rejects.toMatchObject({ code: "PATH_COLLISION" });
     await expect(
       saveDocument({
         path: file,
