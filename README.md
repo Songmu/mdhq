@@ -1,4 +1,4 @@
-# mdhq - Markdown headquarters (?)
+# mdhq - Markdown headquarters, probably
 
 `mdhq` saves web pages as Markdown in a [ghq](https://github.com/x-motemen/ghq)-inspired filesystem layout. It
 uses [Defuddle](https://defuddle.md/) for content extraction and keeps all state in Markdown and asset
