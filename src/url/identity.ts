@@ -8,7 +8,7 @@ export interface UrlIdentity {
   entryParameters?: readonly [string, string][];
 }
 
-export type EntryQueryKeys = string | readonly string[] | null;
+export type EntryQueryKeys = string | readonly string[] | null | undefined;
 
 function queryValue(url: URL, key: string): string | undefined {
   const values = url.searchParams.getAll(key);
