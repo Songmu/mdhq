@@ -11,7 +11,7 @@ files rather than a database.
 ## Installation
 
 ```sh
-npm install --global mdhq
+npm install --global @songmu/mdhq
 ```
 
 ## CLI
@@ -78,7 +78,7 @@ patterns are rejected.
 ## Library API
 
 ```ts
-import { convertHtml, getPage } from "mdhq";
+import { convertHtml, getPage } from "@songmu/mdhq";
 
 const converted = await convertHtml({
   html,
