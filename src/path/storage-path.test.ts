@@ -62,7 +62,7 @@ describe("storagePathForUrl", () => {
         })
       )
     ).toBe(
-      ["example.com", "index.php", "option%3Dcom_content%26view%3Darticle%26id%3D123.md"].join(
+      ["example.com", "index.php", "option=com_content&view=article&id=123.md"].join(
         path.sep
       )
     );
