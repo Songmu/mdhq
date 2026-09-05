@@ -91,11 +91,21 @@ export function storagePathForUrl(options: StoragePathOptions): string {
   const rawSegments = url.pathname.split("/").filter(Boolean);
   const queryHash =
     identity.entryValue === undefined ? queryTailHash(url) : undefined;
-  const directories = (
+  const directorySegments = (
     queryHash && url.pathname.endsWith("/")
       ? rawSegments
       : rawSegments.slice(0, -1)
-  ).map((segment) => fitSegment(segment));
+  );
+  if (queryHash && url.pathname.endsWith("/") && directorySegments.length > 0) {
+    const finalIndex = directorySegments.length - 1;
+    const finalSegment = directorySegments[finalIndex];
+    if (finalSegment !== undefined) {
+      directorySegments[finalIndex] = encodeURIComponent(
+        storageBasename(finalSegment)
+      );
+    }
+  }
+  const directories = directorySegments.map((segment) => fitSegment(segment));
   let filename: string;
 
   if (identity.entryValue !== undefined) {

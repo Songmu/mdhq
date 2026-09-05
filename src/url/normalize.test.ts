@@ -54,6 +54,10 @@ describe("URL normalization", () => {
     [
       '<link rel="canonical" href="mailto:test@example.com">',
       "a non-HTTP canonical URL"
+    ],
+    [
+      '<link rel="canonical" href="https://user:secret@example.com/article?clean=1">',
+      "a canonical URL containing userinfo"
     ]
   ])("falls back to tracking cleanup for %s", (head) => {
     expect(

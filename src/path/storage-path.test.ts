@@ -74,6 +74,18 @@ describe("storagePathForUrl", () => {
     ).toBe(["example.com", "path", "to", `${digest}.md`].join(path.sep));
   });
 
+  it("uses one destination for trailing-slash HTML extension aliases", () => {
+    const plain = storagePathForUrl({
+      root,
+      url: "https://example.com/path/to/?id=123"
+    });
+    const htmlAlias = storagePathForUrl({
+      root,
+      url: "https://example.com/path/to.html/?id=123"
+    });
+    expect(htmlAlias).toBe(plain);
+  });
+
   it("falls back to a query hash when the configured entry value is empty", () => {
     const digest = createHash("md5")
       .update("blog.php?entry_id=&lang=en")

@@ -67,6 +67,8 @@ function canonicalUrl(html: string, finalUrl: URL): URL | undefined {
 
 function isCanonicalEquivalent(finalUrl: URL, canonical: URL): boolean {
   return (
+    canonical.username === "" &&
+    canonical.password === "" &&
     normalizedOrigin(finalUrl) === normalizedOrigin(canonical) &&
     canonicalPathname(finalUrl.pathname || "/") ===
       canonicalPathname(canonical.pathname || "/")

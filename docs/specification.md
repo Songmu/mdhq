@@ -323,6 +323,7 @@ After redirects, mdhq examines `link` elements whose whitespace-separated
   `<base href>` is honored; an invalid base falls back to the final response
   URL.
 - The resolved canonical must use HTTP or HTTPS.
+- Canonical URLs containing a username or password are rejected.
 - Its normalized origin and canonical pathname must equal those of the final
   response URL. Scheme, normalized host, port, and pathname aliases therefore
   cannot point to another content location.
@@ -423,6 +424,10 @@ https://example.com/path/to/?id=123
 MD5 input: ?id=123
 -> example.com/path/to/<md5>.md
 ```
+
+The final directory segment uses the same recognized HTML-extension
+normalization as queryless storage, so `/to/?id=123` and
+`/to.html/?id=123` resolve to the same destination.
 
 If canonical selection or tracking cleanup removes the complete query, the
 normal queryless destination rules apply.
