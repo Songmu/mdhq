@@ -132,6 +132,21 @@ describe("CLI", () => {
     expect(JSON.parse(stdout)).toHaveLength(2);
   });
 
+  it("rejects an empty URL batch", async () => {
+    let stderr = "";
+    const io: CliIo = {
+      stdout: { write: () => true },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+    expect(await runCli(["node", "mdhq", "get"], io)).toBe(1);
+    expect(stderr).toContain("At least one URL is required");
+  });
+
   it("does not create _assets with --no-assets", async () => {
     let stdout = "";
     const io: CliIo = {

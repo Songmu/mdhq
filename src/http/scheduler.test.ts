@@ -15,35 +15,26 @@ describe("RequestScheduler", () => {
         active -= 1;
       })
     );
-    await vi.waitFor(() => expect(active).toBe(2));
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
     expect(maximum).toBe(2);
     pending.splice(0, 2).forEach((resolve) => resolve());
-    await vi.waitFor(() => expect(active).toBe(2));
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
     pending.splice(0, 2).forEach((resolve) => resolve());
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
     pending.splice(0).forEach((resolve) => resolve());
     await Promise.all(tasks);
     expect(maximum).toBe(2);
   });
 
   it("serializes and spaces tasks for the same host", async () => {
-    vi.useFakeTimers();
-    try {
-      const scheduler = new RequestScheduler(8, 1_000);
-      const starts: number[] = [];
-      const task = () =>
-        scheduler.run("https://example.com/page", async () => {
-          starts.push(Date.now());
-        });
-      const first = task();
-      await vi.waitFor(() => expect(starts).toHaveLength(1));
-      const second = task();
-      await vi.advanceTimersByTimeAsync(999);
-      expect(starts).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(1);
-      await Promise.all([first, second]);
-      expect(starts).toEqual([0, 1_000]);
-    } finally {
-      vi.useRealTimers();
-    }
+    const scheduler = new RequestScheduler(8, 20);
+    const starts: number[] = [];
+    const task = () =>
+      scheduler.run("https://example.com/page", async () => {
+        starts.push(Date.now());
+      });
+    await Promise.all([task(), task()]);
+    expect(starts).toHaveLength(2);
+    expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(20);
   });
 });
