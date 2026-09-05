@@ -54,7 +54,11 @@ export class RequestScheduler {
       }
       return;
     }
-    const [{ host, run }] = this.pending.splice(index, 1);
+    const item = this.pending.splice(index, 1)[0];
+    if (!item) {
+      return;
+    }
+    const { host, run } = item;
     this.active += 1;
     this.activeHosts.add(host);
     this.lastStarted.set(host, Date.now());

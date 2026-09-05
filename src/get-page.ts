@@ -170,8 +170,7 @@ async function getPageAttempt(
     ...(userAgent ? { userAgent } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     ...(maxResponseBytes !== undefined ? { maxResponseBytes } : {}),
-    ...(maxRedirects !== undefined ? { maxRedirects } : {})
-    ,
+    ...(maxRedirects !== undefined ? { maxRedirects } : {}),
     ...(options.scheduler ? { scheduler: options.scheduler } : {})
   };
   let conditional: { etag?: string; lastModified?: string } | undefined;

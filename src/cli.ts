@@ -86,7 +86,7 @@ export function createProgram(io: CliIo = process): Command {
         }
       ) => {
         const inputUrls = await readStdinUrls(io.stdin);
-        const requestedUrls = [...urls, ...inputUrls];
+        const requestedUrls = [...(urls ?? []), ...inputUrls];
         if (requestedUrls.length === 0) {
           throw new MdhqError("INVALID_URL", "At least one URL is required");
         }

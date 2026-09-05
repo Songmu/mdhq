@@ -18,6 +18,8 @@ npm install --global @songmu/mdhq
 
 ```sh
 mdhq get https://example.com/article
+mdhq get https://example.com/article https://example.com/another-article
+cat urls.txt | mdhq get
 mdhq get --update https://example.com/article
 mdhq get --no-assets https://example.com/article
 mdhq get --json --header 'Cookie: session=value' https://example.com/article
@@ -26,9 +28,12 @@ mdhq list --full-path
 mdhq root
 ```
 
-`mdhq get` prints the absolute Markdown path to stdout by default. Warnings
-are written to stderr. `--json` returns the requested URL, final source URL,
-Markdown path, status, downloaded assets, and warnings.
+`mdhq get` accepts multiple URLs as arguments or one URL per line on standard
+input; both sources are merged. It prints one absolute Markdown path per URL
+to stdout by default. Warnings are written to stderr. `--json` returns one
+result object for a single URL, or an array for multiple URLs. Requests are
+limited to eight in parallel, with requests to the same host serialized and
+spaced one second apart; image downloads use the same limits.
 
 `mdhq list` recursively lists `.md` files below the storage root, one per
 line, in sorted root-relative form. Use `-p` or `--full-path` to print absolute

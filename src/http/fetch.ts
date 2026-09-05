@@ -129,19 +129,14 @@ export async function fetchResource(
   for (let redirects = 0; ; redirects += 1) {
     let response: Response;
     try {
-      response = await (options.scheduler?.run(url, async () =>
-        (await undiciFetch(url, {
+      const fetch = () =>
+        undiciFetch(url, {
           dispatcher: proxyAgent,
           headers: requestHeaders(options, customHeadersAllowed, redirects === 0),
           redirect: "manual",
           signal: AbortSignal.timeout(timeoutMs)
-        })) as unknown as Response
-      ) ?? undiciFetch(url, {
-        dispatcher: proxyAgent,
-        headers: requestHeaders(options, customHeadersAllowed, redirects === 0),
-        redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs)
-      })) as Response;
+        }) as unknown as Promise<Response>;
+      response = options.scheduler ? await options.scheduler.run(url, fetch) : await fetch();
     } catch (error) {
       throw new MdhqError("FETCH_FAILED", `Failed to fetch ${url.href}`, { cause: error });
     }
