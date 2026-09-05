@@ -105,9 +105,17 @@ export function createProgram(io: CliIo = process): Command {
           throw new MdhqError("INVALID_URL", "At least one URL is required");
         }
         const scheduler = new RequestScheduler();
-        const results = await Promise.all(
-          requestedUrls.map((url) =>
-            getPage({
+        const results: Awaited<ReturnType<typeof getPage>>[] = [];
+        let nextIndex = 0;
+        const worker = async (): Promise<void> => {
+          while (nextIndex < requestedUrls.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            const url = requestedUrls[index];
+            if (url === undefined) {
+              continue;
+            }
+            results[index] = await getPage({
               url,
               ...(options.root ? { root: options.root } : {}),
               ...(options.assets === false ? { assets: false } : {}),
@@ -116,8 +124,11 @@ export function createProgram(io: CliIo = process): Command {
               headers: parseHeaders(options.header),
               scheduler,
               onWarning: (warning) => io.stderr.write(`warning: ${warning.message}\n`)
-            })
-          )
+            });
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(8, requestedUrls.length) }, () => worker())
         );
         io.stdout.write(
           options.json
