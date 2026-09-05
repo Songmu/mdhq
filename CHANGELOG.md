@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.4](https://github.com/Songmu/mdhq/compare/v0.0.3...v0.0.4) - 2026-09-05
+
+- Specify repository for release publishing by @Songmu in https://github.com/Songmu/mdhq/pull/32
+
 ## [v0.0.3](https://github.com/Songmu/mdhq/compare/v0.0.2...v0.0.3) - 2026-09-05
 
 - Normalize source URLs and query-aware storage paths by @Songmu in https://github.com/Songmu/mdhq/pull/29
