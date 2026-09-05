@@ -58,4 +58,5 @@ jobs:
       - run: gh release edit "$TAG" --draft=false --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.tagpr.outputs.tag }}
