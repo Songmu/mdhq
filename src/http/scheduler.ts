@@ -29,7 +29,11 @@ export class RequestScheduler {
   }
 
   private pump(): void {
-    if (this.timer || this.active >= this.maxConcurrent) {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    if (this.active >= this.maxConcurrent) {
       return;
     }
     const now = Date.now();

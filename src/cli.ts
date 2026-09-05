@@ -42,11 +42,25 @@ async function readStdinUrls(stdin: NodeJS.ReadStream | undefined): Promise<stri
   if (!stdin || stdin.isTTY) {
     return [];
   }
-  let content = "";
+  const urls: string[] = [];
+  let remainder = "";
+  const decoder = new TextDecoder();
   for await (const chunk of stdin) {
-    content += String(chunk);
+    const text =
+      typeof chunk === "string"
+        ? chunk
+        : decoder.decode(chunk as Uint8Array, { stream: true });
+    const lines = `${remainder}${text}`.split(
+      /\r?\n/u
+    );
+    remainder = lines.pop() ?? "";
+    urls.push(...lines.map((line) => line.trim()).filter(Boolean));
   }
-  return content.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  remainder += decoder.decode();
+  if (remainder.trim()) {
+    urls.push(remainder.trim());
+  }
+  return urls;
 }
 
 export function createProgram(io: CliIo = process): Command {
@@ -170,5 +184,5 @@ if (process.argv[1] !== undefined) {
   }
 }
 if (isMain) {
-  process.exitCode = await runCli(process.argv, { ...process, stdin: process.stdin });
+  process.exitCode = await runCli(process.argv, process);
 }
