@@ -182,6 +182,10 @@ describe("getPage", () => {
         response.writeHead(302, { location: "/changing" }).end();
         return;
       }
+      if (request.url === "/redirect-tracking-page") {
+        response.writeHead(302, { location: "/tracking-page?utm_source=redirect" }).end();
+        return;
+      }
       if (request.url === "/changing") {
         const responseBody = changingBody;
         const sendResponse = (): void => {
@@ -474,7 +478,7 @@ describe("getPage", () => {
     ).toHaveLength(requestsAfterFirst);
   });
 
-  it("does not reuse validators when normalization changes the HTTP target", async () => {
+  it("updates via the purified URL when it maps to an existing document", async () => {
     const requestedUrl = `${baseUrl}/tracking-page?utm_source=newsletter`;
     const first = await getPage({
       url: requestedUrl,
@@ -493,14 +497,7 @@ describe("getPage", () => {
       useAsync: false
     });
     expect(updated.status).toBe("unchanged");
-    const updateRequest = conditionalHeaders
-      .filter(
-        (request) => request.path === "/tracking-page?utm_source=newsletter"
-      )
-      .at(-1);
-    expect(updateRequest).toEqual({
-      path: "/tracking-page?utm_source=newsletter"
-    });
+    expect(conditionalHeaders.at(-1)).toEqual({ path: "/tracking-page" });
 
     const direct = await getPage({
       url: `${baseUrl}/tracking-page`,
@@ -509,12 +506,39 @@ describe("getPage", () => {
       update: true,
       useAsync: false
     });
-    expect(direct.status).toBe("updated");
+    expect(direct.status).toBe("unchanged");
     expect(
       conditionalHeaders
         .filter((request) => request.path === "/tracking-page")
         .at(-1)
-    ).toEqual({ path: "/tracking-page" });
+    ).toEqual({ path: "/tracking-page", etag: '"tracking"' });
+  });
+
+  it("updates a redirected existing destination via the purified URL", async () => {
+    const first = await getPage({
+      url: `${baseUrl}/tracking-page`,
+      root,
+      assets: false,
+      useAsync: false
+    });
+    const updated = await getPage({
+      url: `${baseUrl}/redirect-tracking-page`,
+      root,
+      assets: false,
+      update: true,
+      useAsync: false
+    });
+    expect(updated.path).toBe(first.path);
+    expect(updated.status).toBe("unchanged");
+    expect(
+      conditionalHeaders.filter((request) => request.path === "/tracking-page")
+    ).toEqual([
+      { path: "/tracking-page" },
+      { path: "/tracking-page", etag: '"tracking"' }
+    ]);
+    expect(conditionalHeaders).toContainEqual({
+      path: "/tracking-page?utm_source=redirect"
+    });
   });
 
   it.each([
