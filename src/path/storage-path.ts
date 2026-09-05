@@ -96,13 +96,17 @@ export function storagePathForUrl(options: StoragePathOptions): string {
       ? rawSegments
       : rawSegments.slice(0, -1)
   );
-  if (queryHash && url.pathname.endsWith("/") && directorySegments.length > 0) {
-    const finalIndex = directorySegments.length - 1;
-    const finalSegment = directorySegments[finalIndex];
-    if (finalSegment !== undefined) {
-      directorySegments[finalIndex] = encodeURIComponent(
-        storageBasename(finalSegment)
-      );
+  if (queryHash && url.pathname.endsWith("/")) {
+    if (directorySegments.length === 0) {
+      directorySegments.push("index");
+    } else {
+      const finalIndex = directorySegments.length - 1;
+      const finalSegment = directorySegments[finalIndex];
+      if (finalSegment !== undefined) {
+        directorySegments[finalIndex] = encodeURIComponent(
+          storageBasename(finalSegment)
+        );
+      }
     }
   }
   const directories = directorySegments.map((segment) => fitSegment(segment));

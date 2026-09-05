@@ -89,8 +89,14 @@ export function normalizeSourceUrlWithoutCanonical(input: string | URL): string 
 export function normalizeSourceUrl(html: string, finalUrlInput: string | URL): string {
   const finalUrl = withoutFragment(parseHttpUrl(finalUrlInput));
   const canonical = canonicalUrl(html, finalUrl);
-  if (canonical && isCanonicalEquivalent(finalUrl, canonical)) {
-    return withoutFragment(canonical).href;
+  if (canonical) {
+    try {
+      if (isCanonicalEquivalent(finalUrl, canonical)) {
+        return withoutFragment(canonical).href;
+      }
+    } catch {
+      // Ignore malformed optional canonical metadata.
+    }
   }
   return normalizeSourceUrlWithoutCanonical(finalUrl);
 }

@@ -58,6 +58,10 @@ describe("URL normalization", () => {
     [
       '<link rel="canonical" href="https://user:secret@example.com/article?clean=1">',
       "a canonical URL containing userinfo"
+    ],
+    [
+      '<link rel="canonical" href="/%FF?clean=1">',
+      "a canonical URL with invalid UTF-8 in its pathname"
     ]
   ])("falls back to tracking cleanup for %s", (head) => {
     expect(

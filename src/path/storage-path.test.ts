@@ -86,6 +86,25 @@ describe("storagePathForUrl", () => {
     expect(htmlAlias).toBe(plain);
   });
 
+  it("uses one destination for root query aliases", () => {
+    const rootQuery = storagePathForUrl({
+      root,
+      url: "https://example.com/?id=123"
+    });
+    const indexAlias = storagePathForUrl({
+      root,
+      url: "https://example.com/index.html/?id=123"
+    });
+    expect(indexAlias).toBe(rootQuery);
+    expect(path.relative(root, rootQuery)).toBe(
+      [
+        "example.com",
+        "index",
+        `${createHash("md5").update("?id=123").digest("hex")}.md`
+      ].join(path.sep)
+    );
+  });
+
   it("falls back to a query hash when the configured entry value is empty", () => {
     const digest = createHash("md5")
       .update("blog.php?entry_id=&lang=en")

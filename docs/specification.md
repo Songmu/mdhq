@@ -429,6 +429,9 @@ The final directory segment uses the same recognized HTML-extension
 normalization as queryless storage, so `/to/?id=123` and
 `/to.html/?id=123` resolve to the same destination.
 
+Root queries use `index` as their directory, so `/?id=123` and
+`/index.html/?id=123` both resolve to `index/<md5>.md`.
+
 If canonical selection or tracking cleanup removes the complete query, the
 normal queryless destination rules apply.
 
