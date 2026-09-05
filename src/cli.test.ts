@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCli, type CliIo } from "./cli.js";
 
@@ -89,6 +90,61 @@ describe("CLI", () => {
       await runCli(["node", "mdhq", "get", "--root", root, "--json", url], io)
     ).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({ requestedUrl: url, status: "saved" });
+  });
+
+  it("merges URLs from arguments and stdin", async () => {
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true },
+      stdin: Object.assign(Readable.from([`${url}\n`]), {
+        isTTY: false
+      }) as NodeJS.ReadStream
+    };
+    expect(
+      await runCli(["node", "mdhq", "get", "--root", root, url], io)
+    ).toBe(0);
+    expect(stdout.trim().split("\n")).toHaveLength(2);
+  });
+
+  it("returns a JSON array for multiple URLs", async () => {
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true },
+      stdin: Object.assign(Readable.from([`${url}\n`]), {
+        isTTY: false
+      }) as NodeJS.ReadStream
+    };
+    expect(
+      await runCli(["node", "mdhq", "get", "--root", root, "--json", url], io)
+    ).toBe(0);
+    expect(JSON.parse(stdout)).toHaveLength(2);
+  });
+
+  it("rejects an empty URL batch", async () => {
+    let stderr = "";
+    const io: CliIo = {
+      stdout: { write: () => true },
+      stderr: {
+        write: (value) => {
+          stderr += String(value);
+          return true;
+        }
+      }
+    };
+    expect(await runCli(["node", "mdhq", "get"], io)).toBe(1);
+    expect(stderr).toContain("At least one URL is required");
   });
 
   it("does not create _assets with --no-assets", async () => {
