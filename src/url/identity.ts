@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { domainToASCII } from "node:url";
 import { MdhqError } from "../errors.js";
 import { canonicalPathname } from "./pathname.js";
@@ -7,6 +8,24 @@ export interface UrlIdentity {
   pathname: string;
   entryKey?: string;
   entryValue?: string;
+  queryHash?: string;
+}
+
+export function queryTail(url: URL): string {
+  if (!url.search) {
+    return "";
+  }
+  if (url.pathname.endsWith("/")) {
+    return url.search;
+  }
+  return `${url.pathname.split("/").at(-1) ?? ""}${url.search}`;
+}
+
+export function queryTailHash(url: URL): string | undefined {
+  const tail = queryTail(url);
+  return tail
+    ? createHash("md5").update(tail, "utf8").digest("hex")
+    : undefined;
 }
 
 export function parseHttpUrl(input: string | URL): URL {
@@ -38,8 +57,10 @@ export function createUrlIdentity(
   entryQueryKey?: string
 ): UrlIdentity {
   const url = parseHttpUrl(input);
-  const entryValue = entryQueryKey ? url.searchParams.get(entryQueryKey) : null;
-  const hasEntryValue = entryValue !== null && entryValue !== "";
+  const entryValue = entryQueryKey
+    ? url.searchParams.getAll(entryQueryKey).find((value) => value !== "")
+    : undefined;
+  const hasEntryValue = entryValue !== undefined;
   const identity: UrlIdentity = {
     host: normalizeHost(url),
     pathname: canonicalPathname(url.pathname || "/", hasEntryValue)
@@ -47,6 +68,11 @@ export function createUrlIdentity(
   if (entryQueryKey && hasEntryValue) {
     identity.entryKey = entryQueryKey;
     identity.entryValue = entryValue.normalize("NFC");
+  } else {
+    const hash = queryTailHash(url);
+    if (hash) {
+      identity.queryHash = hash;
+    }
   }
   return identity;
 }
@@ -54,8 +80,10 @@ export function createUrlIdentity(
 export function serializeUrlIdentity(identity: UrlIdentity): string {
   const entry =
     identity.entryKey && identity.entryValue
-      ? `?${encodeURIComponent(identity.entryKey)}=${encodeURIComponent(identity.entryValue)}`
-      : "";
+      ? `?entry-key=${encodeURIComponent(identity.entryKey)}&entry-value=${encodeURIComponent(identity.entryValue)}`
+      : identity.queryHash
+        ? `?query-md5=${identity.queryHash}`
+        : "";
   return `//${identity.host}${identity.pathname}${entry}`;
 }
 

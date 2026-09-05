@@ -159,14 +159,16 @@ interface GetPageResult {
 }
 ```
 
-- `requestedUrl` is the input after WHATWG URL serialization. This lowercases
-  and IDNA-normalizes the host, removes an explicit default port, and retains
-  the query and fragment. This serialization is separate from URL identity,
-  which ignores the scheme, fragment, and unselected query parameters.
-- `sourceUrl` is the WHATWG-serialized final URL maintained by the redirect
-  loop. Its query and fragment are whatever remain on that final URL after
-  URL resolution. It is exactly the value written to frontmatter `source`.
-  For a pre-fetch skip, it is the existing document's stored `source` value.
+- `requestedUrl` is the input after WHATWG URL serialization and fragment
+  removal. This lowercases and IDNA-normalizes the host and removes an explicit
+  default port.
+- `sourceUrl` is the normalized source URL written to frontmatter `source`.
+  After redirects, mdhq accepts one HTML canonical URL when its normalized
+  origin and pathname match the final response URL. Invalid, ambiguous,
+  cross-origin, or path-divergent canonical URLs are ignored. Without an
+  accepted canonical, mdhq uses `urlpurify` to remove known tracking
+  parameters from the final response URL. Fragments are always removed.
+  For a pre-fetch skip, `sourceUrl` is the existing document's stored source.
 - `path` is the absolute Markdown path.
 - `assets` is empty when page processing is skipped.
 - `warnings` contains configuration and asset warnings.
@@ -186,6 +188,11 @@ back to the stored `last_modified` as `If-Modified-Since`, when the request is
 for the same HTTP target and does not include credentials. `etag` and
 `last_modified` are stored in Markdown frontmatter only when the response is
 safe to revalidate; `Vary` and body digests are not serialized.
+
+The fast pre-fetch skip is retained. If the requested URL candidate already
+maps to an existing document and `update` is false, mdhq does not make a
+network request and therefore cannot observe remote redirect or canonical
+changes.
 
 ### Asset results
 

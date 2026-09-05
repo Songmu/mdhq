@@ -21,9 +21,13 @@ import { inspectDestination, saveDocument } from "./storage/save.js";
 import type { GetPageOptions, GetPageResult, MdhqWarning } from "./types.js";
 import {
   normalizeHost,
-  parseHttpUrl,
   sameHttpTarget
 } from "./url/identity.js";
+import {
+  normalizeRequestedUrl,
+  normalizeSourceUrl,
+  normalizeSourceUrlWithoutCanonical
+} from "./url/normalize.js";
 
 interface GetPageContext {
   options: GetPageOptions;
@@ -101,7 +105,7 @@ function sameUserFacingFrontmatter(
 }
 
 export async function getPage(options: GetPageOptions): Promise<GetPageResult> {
-  const requestedUrl = parseHttpUrl(options.url).href;
+  const requestedUrl = normalizeRequestedUrl(options.url);
   const loaded = await loadConfig(options.configPath);
   const warnings: MdhqWarning[] = [];
   const warn = (warning: MdhqWarning): void => {
@@ -127,7 +131,8 @@ async function getPageAttempt(
   callerHeadersAllowed: boolean
 ): Promise<GetPageResult> {
   const { options, requestedUrl, loaded, warnings, warn, root } = context;
-  const requested = new URL(fetchUrl);
+  const requestedCandidateUrl = normalizeSourceUrlWithoutCanonical(fetchUrl);
+  const requested = new URL(requestedCandidateUrl);
   const requestedConfig = resolveHostConfig(
     normalizeHost(requested),
     requested.pathname,
@@ -141,7 +146,7 @@ async function getPageAttempt(
   });
   const requestedExisting = await inspectDestination(
     requestedPath,
-    fetchUrl,
+    requestedCandidateUrl,
     requestedEntryKey,
     root
   );
@@ -274,28 +279,31 @@ async function getPageAttempt(
       warnings
     };
   }
-  const finalUrl = new URL(fetched.finalUrl);
+  const finalResponseUrl = new URL(fetched.finalUrl);
+  const sourceUrl = normalizeSourceUrl(fetched.html, finalResponseUrl);
+  const normalizedSource = new URL(sourceUrl);
   const matchedConfig = resolveHostConfig(
-    normalizeHost(finalUrl),
-    finalUrl.pathname,
+    normalizeHost(normalizedSource),
+    normalizedSource.pathname,
     loaded.config.hosts ?? {}
   );
   const entryQueryKey = matchedConfig?.entryQueryKey ?? undefined;
   const markdownPath = storagePathForUrl({
     root,
-    url: finalUrl,
+    url: normalizedSource,
     ...(entryQueryKey ? { entryQueryKey } : {})
   });
   const existing = await inspectDestination(
     markdownPath,
-    finalUrl.href,
+    sourceUrl,
     entryQueryKey,
     root
   );
   if (
     options.update &&
     existing &&
-    markdownPath !== requestedPath
+    markdownPath !== requestedPath &&
+    sameHttpTarget(sourceUrl, finalResponseUrl)
   ) {
     if (retriesRemaining === 0) {
       throw new MdhqError(
@@ -305,7 +313,7 @@ async function getPageAttempt(
     }
     return getPageAttempt(
       context,
-      finalUrl.href,
+      finalResponseUrl.href,
       retriesRemaining - 1,
       responseHeadersAllowed
     );
@@ -313,7 +321,7 @@ async function getPageAttempt(
   if (existing && !options.update) {
     return {
       requestedUrl,
-      sourceUrl: finalUrl.href,
+      sourceUrl,
       path: markdownPath,
       status: "skipped",
       assets: [],
@@ -327,7 +335,7 @@ async function getPageAttempt(
     responseHeadersAllowed && hasCredentialHeaders(http.headers);
   const converted = await convertHtml({
     html: fetched.html,
-    url: finalUrl,
+    url: finalResponseUrl,
     defuddle: {
       ...loaded.config.defuddle,
       fetch: fetchWithEnvProxy,
@@ -341,7 +349,7 @@ async function getPageAttempt(
   let metadata = converted.metadata;
   if (converted.metadata.image) {
     try {
-      const image = new URL(converted.metadata.image, finalUrl);
+      const image = new URL(converted.metadata.image, finalResponseUrl);
       if (image.protocol !== "http:" && image.protocol !== "https:") {
         throw new TypeError(`Unsupported image URL scheme: ${image.protocol}`);
       }
@@ -355,11 +363,14 @@ async function getPageAttempt(
       warn({
         code: "INVALID_IMAGE_URL",
         message: `Invalid representative image URL: ${converted.metadata.image}`,
-        url: finalUrl.href
+        url: finalResponseUrl.href
       });
     }
   }
-  const transformed = transformMarkdown(converted.markdown, finalUrl.href);
+  const transformed = transformMarkdown(
+    converted.markdown,
+    finalResponseUrl.href
+  );
   const assetsEnabled = options.assets ?? loaded.config.assets ?? true;
   const localized = assetsEnabled
     ? await localizeAssets({
@@ -368,7 +379,7 @@ async function getPageAttempt(
         ...(metadata.image ? { representativeImage: metadata.image } : {}),
         markdownPath,
         root,
-        baseUrl: finalUrl.href,
+        baseUrl: finalResponseUrl.href,
         http: responseHeadersAllowed ? http : { ...http, headers: [] },
         warn
       })
@@ -384,12 +395,15 @@ async function getPageAttempt(
   const contentDigest = markdownContentDigest(localized.markdown);
   const lastModified = normalizeLastModified(fetched.lastModified);
   const vary = varyNames(fetched.vary);
-  const validatorsReusable = vary.length === 0 && !responseCredentialed;
+  const validatorsReusable =
+    vary.length === 0 &&
+    !responseCredentialed &&
+    sameHttpTarget(sourceUrl, finalResponseUrl);
   const etag = validatorsReusable ? fetched.etag : undefined;
   const reusableLastModified = validatorsReusable ? lastModified : undefined;
   const nextFrontmatterOptions = {
     metadata,
-    sourceUrl: finalUrl.href,
+    sourceUrl,
     requestedUrl,
     created,
     modified: now,
@@ -415,7 +429,7 @@ async function getPageAttempt(
   const storageStatus = await saveDocument({
     path: markdownPath,
     content,
-    sourceUrl: finalUrl.href,
+    sourceUrl,
     update: options.update ?? false,
     ...(options.update
       ? { expectedContent: expectedExisting?.content ?? null }
@@ -439,7 +453,7 @@ async function getPageAttempt(
   }
   return {
     requestedUrl,
-    sourceUrl: finalUrl.href,
+    sourceUrl,
     path: markdownPath,
     status:
       expectedExisting &&

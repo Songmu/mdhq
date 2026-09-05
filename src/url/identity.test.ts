@@ -8,11 +8,17 @@ import {
 } from "./identity.js";
 
 describe("URL identity", () => {
-  it("ignores scheme, fragments, and unconfigured query parameters", () => {
+  it("ignores scheme and fragments but distinguishes unconfigured queries", () => {
     expect(
       sameUrlIdentity(
         "http://Example.com/path?a=1#top",
         "https://example.com/path?b=2"
+      )
+    ).toBe(false);
+    expect(
+      sameUrlIdentity(
+        "http://Example.com/path?a=1#top",
+        "https://example.com/path?a=1#bottom"
       )
     ).toBe(true);
   });
@@ -26,7 +32,37 @@ describe("URL identity", () => {
       serializeUrlIdentity(
         createUrlIdentity("https://example.com/blog.php?id=123&ignore=1", "id")
       )
-    ).toBe("//example.com/blog.php?id=123");
+    ).toBe("//example.com/blog.php?entry-key=id&entry-value=123");
+  });
+
+  it("uses the first non-empty configured entry value", () => {
+    expect(
+      serializeUrlIdentity(
+        createUrlIdentity(
+          "https://example.com/blog.php?id=&id=123&ignore=1",
+          "id"
+        )
+      )
+    ).toBe("//example.com/blog.php?entry-key=id&entry-value=123");
+  });
+
+  it("hashes the ordered query tail without a usable entry value", () => {
+    const left = createUrlIdentity("https://example.com/blog.php?a=1&b=2");
+    const reordered = createUrlIdentity("https://example.com/blog.php?b=2&a=1");
+    expect(left.queryHash).toMatch(/^[a-f0-9]{32}$/u);
+    expect(reordered.queryHash).toMatch(/^[a-f0-9]{32}$/u);
+    expect(left.queryHash).not.toBe(reordered.queryHash);
+  });
+
+  it("separates generic query hashes from entry-key identities", () => {
+    const generic = createUrlIdentity("https://example.com/path/?value=1");
+    const entry = createUrlIdentity(
+      `https://example.com/path/?md5=${generic.queryHash}`,
+      "md5"
+    );
+    expect(serializeUrlIdentity(generic)).not.toBe(
+      serializeUrlIdentity(entry)
+    );
   });
 
   it("normalizes Unicode and percent-escape spelling in paths", () => {

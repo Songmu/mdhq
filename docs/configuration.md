@@ -120,6 +120,10 @@ Use the dedicated User-Agent option for replacement.
 credentials such as cookies or authorization tokens from being stored in the
 configuration file.
 
+After fetching and source normalization, host and path configuration is
+resolved again against the normalized source URL. This final match determines
+the effective `entryQueryKey` and storage destination.
+
 ## Defuddle options
 
 Supported `defuddle` fields:
@@ -219,6 +223,11 @@ Selection order:
 2. The matching glob with the greatest number of fixed literal characters.
 3. No host configuration.
 
+When the effective `entryQueryKey` has multiple values, mdhq uses the first
+non-empty value and ignores the remaining query parameters for storage
+identity. When no non-empty value exists, the URL uses the generic ordered
+query-string MD5 destination rather than the queryless destination.
+
 If multiple matching patterns have equal specificity, processing fails with
 `CONFIG_ERROR`. Multiple patterns that normalize to the same exact host are
 also an error.
@@ -238,5 +247,7 @@ Rules:
 - A matching path-level string overrides the host value.
 - A matching path-level `null` disables the host value.
 - A matching path object that omits `entryQueryKey` inherits the host value.
-- A missing or empty parameter value falls back to normal path-based storage.
-- All non-selected query parameters are ignored.
+- When at least one non-empty selected value exists, all non-selected query
+  parameters are ignored.
+- When no non-empty selected value exists, a remaining query falls back to the
+  generic ordered query-string MD5 destination.
