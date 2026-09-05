@@ -1,4 +1,5 @@
 import type { DefuddleOptions } from "defuddle/node";
+import type { RequestScheduler } from "./http/scheduler.js";
 
 export interface MdhqWarning {
   code: string;
@@ -50,6 +51,7 @@ export interface GetPageOptions {
   useAsync?: boolean;
   now?: () => Date;
   onWarning?: (warning: MdhqWarning) => void;
+  scheduler?: RequestScheduler;
 }
 
 export interface AssetResult {

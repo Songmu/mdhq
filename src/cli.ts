@@ -9,6 +9,7 @@ import { getPage } from "./get-page.js";
 import { listMarkdownFiles } from "./list-files.js";
 import type { HeaderValue } from "./types.js";
 import { VERSION } from "./version.js";
+import { RequestScheduler } from "./http/scheduler.js";
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
@@ -34,6 +35,18 @@ function parseHeaders(values: string[]): HeaderValue[] {
 export interface CliIo {
   stdout: Pick<NodeJS.WriteStream, "write">;
   stderr: Pick<NodeJS.WriteStream, "write">;
+  stdin?: NodeJS.ReadStream;
+}
+
+async function readStdinUrls(stdin: NodeJS.ReadStream | undefined): Promise<string[]> {
+  if (!stdin || stdin.isTTY) {
+    return [];
+  }
+  let content = "";
+  for await (const chunk of stdin) {
+    content += String(chunk);
+  }
+  return content.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
 }
 
 export function createProgram(io: CliIo = process): Command {
@@ -52,8 +65,8 @@ export function createProgram(io: CliIo = process): Command {
 
   program
     .command("get")
-    .description("Fetch and save one web page.")
-    .argument("<url>")
+    .description("Fetch and save web pages.")
+    .argument("[urls...]")
     .option("--root <path>", "storage root")
     .option("--no-assets", "do not download images")
     .option("--update", "update an existing page")
@@ -62,7 +75,7 @@ export function createProgram(io: CliIo = process): Command {
     .addOption(new Option("--json", "print a structured result"))
     .action(
       async (
-        url: string,
+        urls: string[],
         options: {
           root?: string;
           assets?: boolean;
@@ -72,16 +85,31 @@ export function createProgram(io: CliIo = process): Command {
           json?: boolean;
         }
       ) => {
-        const result = await getPage({
-          url,
-          ...(options.root ? { root: options.root } : {}),
-          ...(options.assets === false ? { assets: false } : {}),
-          update: options.update ?? false,
-          ...(options.userAgent ? { userAgent: options.userAgent } : {}),
-          headers: parseHeaders(options.header),
-          onWarning: (warning) => io.stderr.write(`warning: ${warning.message}\n`)
-        });
-        io.stdout.write(options.json ? `${JSON.stringify(result, null, 2)}\n` : `${result.path}\n`);
+        const inputUrls = await readStdinUrls(io.stdin);
+        const requestedUrls = [...urls, ...inputUrls];
+        if (requestedUrls.length === 0) {
+          throw new MdhqError("INVALID_URL", "At least one URL is required");
+        }
+        const scheduler = new RequestScheduler();
+        const results = await Promise.all(
+          requestedUrls.map((url) =>
+            getPage({
+              url,
+              ...(options.root ? { root: options.root } : {}),
+              ...(options.assets === false ? { assets: false } : {}),
+              update: options.update ?? false,
+              ...(options.userAgent ? { userAgent: options.userAgent } : {}),
+              headers: parseHeaders(options.header),
+              scheduler,
+              onWarning: (warning) => io.stderr.write(`warning: ${warning.message}\n`)
+            })
+          )
+        );
+        io.stdout.write(
+          options.json
+            ? `${JSON.stringify(results.length === 1 ? results[0] : results, null, 2)}\n`
+            : `${results.map((result) => result.path).join("\n")}\n`
+        );
       }
     );
 
@@ -142,5 +170,5 @@ if (process.argv[1] !== undefined) {
   }
 }
 if (isMain) {
-  process.exitCode = await runCli();
+  process.exitCode = await runCli(process.argv, { ...process, stdin: process.stdin });
 }

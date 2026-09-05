@@ -8,6 +8,7 @@ import { MdhqError } from "../errors.js";
 import type { HeaderValue } from "../types.js";
 import { DEFAULT_USER_AGENT } from "../version.js";
 import { parseHttpUrl } from "../url/identity.js";
+import type { RequestScheduler } from "./scheduler.js";
 
 export interface FetchResourceOptions {
   headers?: HeaderValue[];
@@ -21,6 +22,7 @@ export interface FetchResourceOptions {
     etag?: string;
     lastModified?: string;
   };
+  scheduler?: RequestScheduler;
 }
 
 export interface FetchedResource {
@@ -127,12 +129,19 @@ export async function fetchResource(
   for (let redirects = 0; ; redirects += 1) {
     let response: Response;
     try {
-      response = (await undiciFetch(url, {
+      response = await (options.scheduler?.run(url, async () =>
+        (await undiciFetch(url, {
+          dispatcher: proxyAgent,
+          headers: requestHeaders(options, customHeadersAllowed, redirects === 0),
+          redirect: "manual",
+          signal: AbortSignal.timeout(timeoutMs)
+        })) as unknown as Response
+      ) ?? undiciFetch(url, {
         dispatcher: proxyAgent,
         headers: requestHeaders(options, customHeadersAllowed, redirects === 0),
         redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs)
-      })) as unknown as Response;
+      })) as Response;
     } catch (error) {
       throw new MdhqError("FETCH_FAILED", `Failed to fetch ${url.href}`, { cause: error });
     }
