@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.3](https://github.com/Songmu/mdhq/compare/v0.0.2...v0.0.3) - 2026-09-05
+
+- Normalize source URLs and query-aware storage paths by @Songmu in https://github.com/Songmu/mdhq/pull/29
+- Use purified URLs for update detection by @Songmu with @Copilot in https://github.com/Songmu/mdhq/pull/30
+- Support batch URL fetching in `mdhq get` by @Songmu with @Copilot in https://github.com/Songmu/mdhq/pull/31
+- Automate npm publishing after tagpr by @Songmu in https://github.com/Songmu/mdhq/pull/22
+
 ## [v0.0.2](https://github.com/Songmu/mdhq/compare/v0.0.1...v0.0.2) - 2026-09-04
 
 - Publish package as @songmu/mdhq by @Songmu in https://github.com/Songmu/mdhq/pull/26
