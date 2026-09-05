@@ -160,6 +160,18 @@ async function getPageAttempt(
       warnings
     };
   }
+  if (
+    options.update &&
+    requestedExisting &&
+    !sameHttpTarget(requestedCandidateUrl, fetchUrl)
+  ) {
+    return getPageAttempt(
+      context,
+      requestedCandidateUrl,
+      retriesRemaining,
+      callerHeadersAllowed
+    );
+  }
   const headers = callerHeadersAllowed ? options.headers : [];
   const userAgent = options.userAgent ?? loaded.config.userAgent;
   const timeoutMs = options.timeoutMs ?? loaded.config.timeoutMs;
@@ -302,8 +314,7 @@ async function getPageAttempt(
   if (
     options.update &&
     existing &&
-    markdownPath !== requestedPath &&
-    sameHttpTarget(sourceUrl, finalResponseUrl)
+    markdownPath !== requestedPath
   ) {
     if (retriesRemaining === 0) {
       throw new MdhqError(
@@ -313,7 +324,7 @@ async function getPageAttempt(
     }
     return getPageAttempt(
       context,
-      finalResponseUrl.href,
+      sourceUrl,
       retriesRemaining - 1,
       responseHeadersAllowed
     );
