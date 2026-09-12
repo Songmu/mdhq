@@ -226,8 +226,12 @@ describe("CLI", () => {
           );
       });
     });
+    let resolveFailureSent = (): void => {};
+    const failureSent = new Promise<void>((resolve) => {
+      resolveFailureSent = resolve;
+    });
     const failingServer = createServer((_request, response) => {
-      response.writeHead(500).end("failed");
+      response.writeHead(500).end("failed", resolveFailureSent);
     });
     await Promise.all([
       new Promise<void>((resolve) => slowServer.listen(0, "127.0.0.1", resolve)),
@@ -259,6 +263,7 @@ describe("CLI", () => {
         ],
         io
       );
+      await failureSent;
       expect(
         await Promise.race([
           run.then(() => "settled"),
