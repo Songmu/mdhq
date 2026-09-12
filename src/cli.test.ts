@@ -119,7 +119,7 @@ describe("CLI", () => {
     expect(stdout.trim().split("\n")).toHaveLength(2);
   });
 
-  it("returns one JSON object per line for multiple URLs", async () => {
+  it("streams one JSON object per line in completion order", async () => {
     const fastServer = createServer((_request, response) => {
       response
         .writeHead(200, { "content-type": "text/html" })
@@ -163,7 +163,10 @@ describe("CLI", () => {
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line) as { requestedUrl: string });
-      expect(results.map((result) => result.requestedUrl)).toEqual(requestedUrls);
+      expect(results.map((result) => result.requestedUrl)).toEqual([
+        requestedUrls[1],
+        requestedUrls[0]
+      ]);
     } finally {
       await new Promise<void>((resolve, reject) =>
         fastServer.close((error) => (error ? reject(error) : resolve()))

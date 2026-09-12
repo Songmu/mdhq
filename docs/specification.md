@@ -39,12 +39,14 @@ input. Both sources are merged, and up to eight URLs are processed in parallel.
 | `--header <header>` | Add an HTTP header. The option is repeatable and uses `Name: value` syntax. |
 | `--json` | Write one result per line as JSON Lines instead of only the Markdown path. |
 
-On success without `--json`, stdout contains one absolute Markdown path per
-requested URL, preserving input order, with each path followed by a newline.
+Without `--json`, stdout receives one absolute Markdown path per requested URL,
+with each path followed by a newline. Each result is written as soon as that
+URL finishes, so parallel requests can produce output in completion order
+rather than input order.
 Warnings are written to stderr.
 
 With `--json`, stdout contains one compact JSON object per requested URL,
-preserving input order. Each line has this shape:
+also written as soon as the URL finishes. Each line has this shape:
 
 ```jsonl
 {"requestedUrl":"https://example.com/start","sourceUrl":"https://example.com/article","path":"/data/mdhq/example.com/article.md","status":"saved","assets":[],"warnings":[]}
@@ -58,7 +60,8 @@ preserving input order. Each line has this shape:
   body, including an HTTP 304 response.
 - `skipped`: an existing same-identity file was kept.
 
-An error is written to stderr and causes exit status `1`.
+An error is written to stderr and causes exit status `1`. Results written to
+stdout before the error remain available to downstream consumers.
 
 ### `list`
 

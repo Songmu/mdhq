@@ -31,7 +31,10 @@ mdhq root
 `mdhq get` accepts multiple URLs as arguments or one URL per line on standard
 input; both sources are merged. It prints one absolute Markdown path per URL
 to stdout by default. Warnings are written to stderr. `--json` writes one
-compact JSON result object per URL as JSON Lines, preserving input order.
+compact JSON result object per URL as JSON Lines. Results are written as soon
+as each URL finishes, so parallel requests can produce output in completion
+order rather than input order. If a later request fails, results already
+written to stdout remain available.
 Requests are limited to eight in parallel, with requests to the same host
 serialized and spaced one second apart; image downloads use the same limits.
 

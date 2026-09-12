@@ -107,7 +107,6 @@ export function createProgram(io: CliIo = process): Command {
           throw new MdhqError("INVALID_URL", "At least one URL is required");
         }
         const scheduler = new RequestScheduler();
-        const results: Awaited<ReturnType<typeof getPage>>[] = [];
         let nextIndex = 0;
         const worker = async (): Promise<void> => {
           while (nextIndex < requestedUrls.length) {
@@ -117,7 +116,7 @@ export function createProgram(io: CliIo = process): Command {
             if (url === undefined) {
               continue;
             }
-            results[index] = await getPage({
+            const result = await getPage({
               url,
               ...(options.root ? { root: options.root } : {}),
               ...(options.assets === false ? { assets: false } : {}),
@@ -127,15 +126,13 @@ export function createProgram(io: CliIo = process): Command {
               scheduler,
               onWarning: (warning) => io.stderr.write(`warning: ${warning.message}\n`)
             });
+            io.stdout.write(
+              `${options.json ? JSON.stringify(result) : result.path}\n`
+            );
           }
         };
         await Promise.all(
           Array.from({ length: Math.min(8, requestedUrls.length) }, () => worker())
-        );
-        io.stdout.write(
-          options.json
-            ? `${results.map((result) => JSON.stringify(result)).join("\n")}\n`
-            : `${results.map((result) => result.path).join("\n")}\n`
         );
       }
     );
