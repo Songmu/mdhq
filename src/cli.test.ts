@@ -120,6 +120,19 @@ describe("CLI", () => {
   });
 
   it("streams one JSON object per line in completion order", async () => {
+    let releaseSlow = (): void => {};
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const slowServer = createServer((_request, response) => {
+      void slowGate.then(() => {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>Slow Example</title></head><body><article><p>Slow article content.</p></article></body></html>"
+          );
+      });
+    });
     const fastServer = createServer((_request, response) => {
       response
         .writeHead(200, { "content-type": "text/html" })
@@ -127,12 +140,101 @@ describe("CLI", () => {
           "<html><head><title>Fast Example</title></head><body><article><p>Fast article content.</p></article></body></html>"
         );
     });
-    await new Promise<void>((resolve) => fastServer.listen(0, "localhost", resolve));
+    await Promise.all([
+      new Promise<void>((resolve) => slowServer.listen(0, "127.0.0.1", resolve)),
+      new Promise<void>((resolve) => fastServer.listen(0, "localhost", resolve))
+    ]);
+    const slowAddress = slowServer.address() as AddressInfo;
     const fastAddress = fastServer.address() as AddressInfo;
     const requestedUrls = [
-      new URL("/slow", url).href,
+      `http://127.0.0.1:${slowAddress.port}/slow`,
       `http://localhost:${fastAddress.port}/fast`
     ];
+    let stdout = "";
+    let resolveFirstWrite = (): void => {};
+    const firstWrite = new Promise<void>((resolve) => {
+      resolveFirstWrite = resolve;
+    });
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          resolveFirstWrite();
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+    try {
+      const run = runCli(
+        [
+          "node",
+          "mdhq",
+          "get",
+          "--root",
+          root,
+          "--json",
+          "--no-assets",
+          ...requestedUrls
+        ],
+        io
+      );
+      await firstWrite;
+      expect(
+        stdout
+          .trim()
+          .split("\n")
+          .map(
+            (line) =>
+              (JSON.parse(line) as { requestedUrl: string }).requestedUrl
+          )
+      ).toEqual([requestedUrls[1]]);
+      releaseSlow();
+      expect(await run).toBe(0);
+      const results = stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { requestedUrl: string });
+      expect(results.map((result) => result.requestedUrl)).toEqual([
+        requestedUrls[1],
+        requestedUrls[0]
+      ]);
+    } finally {
+      releaseSlow();
+      await Promise.all([
+        new Promise<void>((resolve, reject) =>
+          slowServer.close((error) => (error ? reject(error) : resolve()))
+        ),
+        new Promise<void>((resolve, reject) =>
+          fastServer.close((error) => (error ? reject(error) : resolve()))
+        )
+      ]);
+    }
+  });
+
+  it("waits for remaining workers before reporting a failure", async () => {
+    let releaseSlow = (): void => {};
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const slowServer = createServer((_request, response) => {
+      void slowGate.then(() => {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>Slow Example</title></head><body><article><p>Slow article content.</p></article></body></html>"
+          );
+      });
+    });
+    const failingServer = createServer((_request, response) => {
+      response.writeHead(500).end("failed");
+    });
+    await Promise.all([
+      new Promise<void>((resolve) => slowServer.listen(0, "127.0.0.1", resolve)),
+      new Promise<void>((resolve) => failingServer.listen(0, "localhost", resolve))
+    ]);
+    const slowAddress = slowServer.address() as AddressInfo;
+    const failingAddress = failingServer.address() as AddressInfo;
     let stdout = "";
     const io: CliIo = {
       stdout: {
@@ -144,33 +246,46 @@ describe("CLI", () => {
       stderr: { write: () => true }
     };
     try {
-      expect(
-        await runCli(
-          [
-            "node",
-            "mdhq",
-            "get",
-            "--root",
-            root,
-            "--json",
-            "--no-assets",
-            ...requestedUrls
-          ],
-          io
-        )
-      ).toBe(0);
-      const results = stdout
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line) as { requestedUrl: string });
-      expect(results.map((result) => result.requestedUrl)).toEqual([
-        requestedUrls[1],
-        requestedUrls[0]
-      ]);
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        fastServer.close((error) => (error ? reject(error) : resolve()))
+      const run = runCli(
+        [
+          "node",
+          "mdhq",
+          "get",
+          "--root",
+          root,
+          "--no-assets",
+          `http://localhost:${failingAddress.port}/failed`,
+          `http://127.0.0.1:${slowAddress.port}/slow`
+        ],
+        io
       );
+      expect(
+        await Promise.race([
+          run.then(() => "settled"),
+          new Promise<"pending">((resolve) =>
+            setTimeout(() => resolve("pending"), 50)
+          )
+        ])
+      ).toBe("pending");
+      releaseSlow();
+      expect(await run).toBe(1);
+      expect(stdout).toBe(
+        `${path.join(
+          root,
+          `127.0.0.1_${slowAddress.port}`,
+          "slow.md"
+        )}\n`
+      );
+    } finally {
+      releaseSlow();
+      await Promise.all([
+        new Promise<void>((resolve, reject) =>
+          slowServer.close((error) => (error ? reject(error) : resolve()))
+        ),
+        new Promise<void>((resolve, reject) =>
+          failingServer.close((error) => (error ? reject(error) : resolve()))
+        )
+      ]);
     }
   });
 

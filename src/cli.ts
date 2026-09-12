@@ -131,9 +131,22 @@ export function createProgram(io: CliIo = process): Command {
             );
           }
         };
+        const failures: unknown[] = [];
         await Promise.all(
-          Array.from({ length: Math.min(8, requestedUrls.length) }, () => worker())
+          Array.from(
+            { length: Math.min(8, requestedUrls.length) },
+            async () => {
+              try {
+                await worker();
+              } catch (error) {
+                failures.push(error);
+              }
+            }
+          )
         );
+        if (failures.length > 0) {
+          throw failures[0];
+        }
       }
     );
 
