@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.5](https://github.com/Songmu/mdhq/compare/v0.0.4...v0.0.5) - 2026-09-12
+
+- Add explicit assets CLI toggle by @Songmu in https://github.com/Songmu/mdhq/pull/40
+
 ## [v0.0.4](https://github.com/Songmu/mdhq/compare/v0.0.3...v0.0.4) - 2026-09-12
 
 - Specify repository for release publishing by @Songmu in https://github.com/Songmu/mdhq/pull/32
