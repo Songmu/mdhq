@@ -21,6 +21,7 @@ mdhq get https://example.com/article
 mdhq get https://example.com/article https://example.com/another-article
 cat urls.txt | mdhq get
 mdhq get --update https://example.com/article
+mdhq get --assets https://example.com/article
 mdhq get --no-assets https://example.com/article
 mdhq get --json --header 'Cookie: session=value' https://example.com/article
 mdhq list
@@ -102,7 +103,8 @@ const saved = await getPage({
 
 `convertHtml` performs extraction without fetching or writing files.
 `getPage` fetches, converts, optionally localizes images, adds frontmatter,
-and saves the document. Set `assets: false` or use `--no-assets` to keep
+and saves the document. Use `--assets` or `--no-assets` to override the
+configured asset behavior. Set `assets: false` or use `--no-assets` to keep
 absolute image URLs without creating `_assets`.
 
 Saved frontmatter uses Obsidian Web Clipper-compatible names such as `title`,
