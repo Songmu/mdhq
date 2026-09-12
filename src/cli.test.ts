@@ -21,11 +21,18 @@ describe("CLI", () => {
           .end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
         return;
       }
-      response
-        .writeHead(200, { "content-type": "text/html" })
-        .end(
-          "<html><head><title>CLI Example</title></head><body><article><p>CLI article content.</p><img src=\"/image.png\" alt=\"Example\"></article></body></html>"
-        );
+      const sendArticle = () => {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            "<html><head><title>CLI Example</title></head><body><article><p>CLI article content.</p><img src=\"/image.png\" alt=\"Example\"></article></body></html>"
+          );
+      };
+      if (request.url === "/slow") {
+        setTimeout(sendArticle, 100);
+      } else {
+        sendArticle();
+      }
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;
@@ -75,7 +82,7 @@ describe("CLI", () => {
     expect(stderr).toBe("");
   });
 
-  it("prints a structured JSON result", async () => {
+  it("prints a JSON Lines result", async () => {
     let stdout = "";
     const io: CliIo = {
       stdout: {
@@ -112,7 +119,20 @@ describe("CLI", () => {
     expect(stdout.trim().split("\n")).toHaveLength(2);
   });
 
-  it("returns a JSON array for multiple URLs", async () => {
+  it("returns one JSON object per line for multiple URLs", async () => {
+    const fastServer = createServer((_request, response) => {
+      response
+        .writeHead(200, { "content-type": "text/html" })
+        .end(
+          "<html><head><title>Fast Example</title></head><body><article><p>Fast article content.</p></article></body></html>"
+        );
+    });
+    await new Promise<void>((resolve) => fastServer.listen(0, "localhost", resolve));
+    const fastAddress = fastServer.address() as AddressInfo;
+    const requestedUrls = [
+      new URL("/slow", url).href,
+      `http://localhost:${fastAddress.port}/fast`
+    ];
     let stdout = "";
     const io: CliIo = {
       stdout: {
@@ -121,15 +141,34 @@ describe("CLI", () => {
           return true;
         }
       },
-      stderr: { write: () => true },
-      stdin: Object.assign(Readable.from([`${url}\n`]), {
-        isTTY: false
-      }) as NodeJS.ReadStream
+      stderr: { write: () => true }
     };
-    expect(
-      await runCli(["node", "mdhq", "get", "--root", root, "--json", url], io)
-    ).toBe(0);
-    expect(JSON.parse(stdout)).toHaveLength(2);
+    try {
+      expect(
+        await runCli(
+          [
+            "node",
+            "mdhq",
+            "get",
+            "--root",
+            root,
+            "--json",
+            "--no-assets",
+            ...requestedUrls
+          ],
+          io
+        )
+      ).toBe(0);
+      const results = stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { requestedUrl: string });
+      expect(results.map((result) => result.requestedUrl)).toEqual(requestedUrls);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        fastServer.close((error) => (error ? reject(error) : resolve()))
+      );
+    }
   });
 
   it("rejects an empty URL batch", async () => {

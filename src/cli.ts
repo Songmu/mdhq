@@ -86,7 +86,7 @@ export function createProgram(io: CliIo = process): Command {
     .option("--update", "update an existing page")
     .option("--user-agent <value>", "HTTP User-Agent")
     .option("--header <header>", "additional HTTP header", collect, [])
-    .addOption(new Option("--json", "print a structured result"))
+    .addOption(new Option("--json", "print results as JSON Lines"))
     .action(
       async (
         urls: string[],
@@ -134,7 +134,7 @@ export function createProgram(io: CliIo = process): Command {
         );
         io.stdout.write(
           options.json
-            ? `${JSON.stringify(results.length === 1 ? results[0] : results, null, 2)}\n`
+            ? `${results.map((result) => JSON.stringify(result)).join("\n")}\n`
             : `${results.map((result) => result.path).join("\n")}\n`
         );
       }
