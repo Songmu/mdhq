@@ -21,7 +21,7 @@ Runtime requirements:
 The executable provides three subcommands:
 
 ```text
-mdhq get [options] <url>
+mdhq get [options] [urls...]
 mdhq list [options]
 mdhq root [options]
 ```
@@ -39,21 +39,15 @@ input. Both sources are merged, and up to eight URLs are processed in parallel.
 | `--header <header>` | Add an HTTP header. The option is repeatable and uses `Name: value` syntax. |
 | `--json` | Write one result per line as JSON Lines instead of only the Markdown path. |
 
-On success without `--json`, stdout contains exactly one absolute Markdown
-path followed by a newline. Warnings are written to stderr.
+On success without `--json`, stdout contains one absolute Markdown path per
+requested URL, preserving input order, with each path followed by a newline.
+Warnings are written to stderr.
 
 With `--json`, stdout contains one compact JSON object per requested URL,
 preserving input order. Each line has this shape:
 
-```json
-{
-  "requestedUrl": "https://example.com/start",
-  "sourceUrl": "https://example.com/article",
-  "path": "/data/mdhq/example.com/article.md",
-  "status": "saved",
-  "assets": [],
-  "warnings": []
-}
+```jsonl
+{"requestedUrl":"https://example.com/start","sourceUrl":"https://example.com/article","path":"/data/mdhq/example.com/article.md","status":"saved","assets":[],"warnings":[]}
 ```
 
 `status` is one of:
