@@ -358,6 +358,33 @@ describe("CLI", () => {
     expect(document).not.toContain(new URL("/image.png", url).href);
   });
 
+  it("uses configured asset behavior when neither assets flag is specified", async () => {
+    const configHome = path.join(root, "config-home");
+    await mkdir(path.join(configHome, "mdhq"), { recursive: true });
+    await writeFile(
+      path.join(configHome, "mdhq", "config.json"),
+      JSON.stringify({ assets: false })
+    );
+    process.env.XDG_CONFIG_HOME = configHome;
+    let stdout = "";
+    const io: CliIo = {
+      stdout: {
+        write: (value) => {
+          stdout += String(value);
+          return true;
+        }
+      },
+      stderr: { write: () => true }
+    };
+
+    expect(await runCli(["node", "mdhq", "get", "--root", root, url], io)).toBe(0);
+    const document = await readFile(stdout.trim(), "utf8");
+    expect(document).toContain(`![Example](${new URL("/image.png", url).href})`);
+    await expect(access(path.join(root, "_assets"))).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+  });
+
   it("reports malformed headers", async () => {
     let stderr = "";
     const io: CliIo = {
