@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.4](https://github.com/Songmu/mdhq/compare/v0.0.3...v0.0.4) - 2026-09-12
+
+- Specify repository for release publishing by @Songmu in https://github.com/Songmu/mdhq/pull/32
+- deps(deps): bump the production-dependencies group with 2 updates by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/34
+- deps(deps-dev): bump vitest from 4.1.11 to 5.0.0 by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/36
+- deps(deps-dev): bump @types/node from 26.4.0 to 26.4.1 in the development-dependencies group by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/35
+- ci(deps): bump Songmu/tagpr from 1.20.2 to 1.20.3 by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/37
+- Output --json results as JSON Lines by @Songmu in https://github.com/Songmu/mdhq/pull/38
+- Stream get results to stdout by @Songmu in https://github.com/Songmu/mdhq/pull/39
+
 ## [v0.0.3](https://github.com/Songmu/mdhq/compare/v0.0.2...v0.0.3) - 2026-09-05
 
 - Normalize source URLs and query-aware storage paths by @Songmu in https://github.com/Songmu/mdhq/pull/29
