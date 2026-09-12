@@ -27,14 +27,23 @@ describe("RequestScheduler", () => {
   });
 
   it("serializes and spaces tasks for the same host", async () => {
-    const scheduler = new RequestScheduler(8, 20);
-    const starts: number[] = [];
-    const task = () =>
-      scheduler.run("https://example.com/page", async () => {
-        starts.push(Date.now());
-      });
-    await Promise.all([task(), task()]);
-    expect(starts).toHaveLength(2);
-    expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(20);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const scheduler = new RequestScheduler(8, 20);
+      const starts: number[] = [];
+      const task = () =>
+        scheduler.run("https://example.com/page", async () => {
+          starts.push(Date.now());
+        });
+      const tasks = [task(), task()];
+      await vi.advanceTimersByTimeAsync(19);
+      expect(starts).toEqual([1_000]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(starts).toEqual([1_000, 1_020]);
+      await Promise.all(tasks);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

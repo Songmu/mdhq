@@ -106,10 +106,11 @@ Otherwise configuration overrides the built-in default.
 The CLI `--user-agent` option is passed as `GetPageOptions.userAgent` and
 therefore overrides configuration `userAgent`.
 
-The CLI `--no-assets` option passes `GetPageOptions.assets: false` and
-therefore overrides configuration `assets`. When asset localization is
-disabled, image destinations remain absolute URLs, the result contains no
-asset entries, and mdhq does not create `_assets`.
+The CLI `--assets` and `--no-assets` options pass
+`GetPageOptions.assets: true` and `GetPageOptions.assets: false`,
+respectively, and therefore override configuration `assets`. When asset
+localization is disabled, image destinations remain absolute URLs, the result
+contains no asset entries, and mdhq does not create `_assets`.
 
 Generic CLI `--header` values and library `headers` values are appended after
 mdhq creates its `Accept` and User-Agent headers. A generic `User-Agent` or

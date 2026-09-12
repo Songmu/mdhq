@@ -506,10 +506,11 @@ For images:
 
 Asset localization is enabled by default. It can be disabled with the
 top-level configuration field `assets: false`, library option
-`GetPageOptions.assets: false`, or CLI option `--no-assets`. The library
-option and CLI option take precedence over configuration. When disabled,
-HTTP(S) image destinations are kept as absolute URLs, the result `assets`
-array is empty, and `_assets` is not created.
+`GetPageOptions.assets: false`, or CLI option `--no-assets`. The CLI options
+`--assets` and `--no-assets` explicitly enable or disable localization and
+take precedence over configuration, as does the library option. When
+disabled, HTTP(S) image destinations are kept as absolute URLs, the result
+`assets` array is empty, and `_assets` is not created.
 
 mdhq does not rewrite ordinary links to other locally stored Markdown
 files.

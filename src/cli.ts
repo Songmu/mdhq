@@ -82,6 +82,7 @@ export function createProgram(io: CliIo = process): Command {
     .description("Fetch and save web pages.")
     .argument("[urls...]")
     .option("--root <path>", "storage root")
+    .option("--assets", "download images")
     .option("--no-assets", "do not download images")
     .option("--update", "update an existing page")
     .option("--user-agent <value>", "HTTP User-Agent")
@@ -119,7 +120,7 @@ export function createProgram(io: CliIo = process): Command {
             const result = await getPage({
               url,
               ...(options.root ? { root: options.root } : {}),
-              ...(options.assets === false ? { assets: false } : {}),
+              ...(options.assets !== undefined ? { assets: options.assets } : {}),
               update: options.update ?? false,
               ...(options.userAgent ? { userAgent: options.userAgent } : {}),
               headers: parseHeaders(options.header),
