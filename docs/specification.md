@@ -26,8 +26,8 @@ mdhq list [options]
 mdhq root [options]
 ```
 
-`mdhq get` accepts exactly one URL per invocation. Parallel or multi-URL
-processing is delegated to external tools such as `xargs`.
+`mdhq get` accepts multiple URL arguments and one URL per line from standard
+input. Both sources are merged, and up to eight URLs are processed in parallel.
 
 ### `get` options
 
@@ -37,12 +37,13 @@ processing is delegated to external tools such as `xargs`.
 | `--update` | Fetch and replace an existing document with the same URL identity. |
 | `--user-agent <value>` | Override the default HTTP User-Agent. |
 | `--header <header>` | Add an HTTP header. The option is repeatable and uses `Name: value` syntax. |
-| `--json` | Write a structured result instead of only the Markdown path. |
+| `--json` | Write one result per line as JSON Lines instead of only the Markdown path. |
 
 On success without `--json`, stdout contains exactly one absolute Markdown
 path followed by a newline. Warnings are written to stderr.
 
-With `--json`, stdout contains an object with this shape:
+With `--json`, stdout contains one compact JSON object per requested URL,
+preserving input order. Each line has this shape:
 
 ```json
 {

@@ -75,7 +75,7 @@ describe("CLI", () => {
     expect(stderr).toBe("");
   });
 
-  it("prints a structured JSON result", async () => {
+  it("prints a JSON Lines result", async () => {
     let stdout = "";
     const io: CliIo = {
       stdout: {
@@ -112,7 +112,7 @@ describe("CLI", () => {
     expect(stdout.trim().split("\n")).toHaveLength(2);
   });
 
-  it("returns a JSON array for multiple URLs", async () => {
+  it("returns one JSON object per line for multiple URLs", async () => {
     let stdout = "";
     const io: CliIo = {
       stdout: {
@@ -129,7 +129,15 @@ describe("CLI", () => {
     expect(
       await runCli(["node", "mdhq", "get", "--root", root, "--json", url], io)
     ).toBe(0);
-    expect(JSON.parse(stdout)).toHaveLength(2);
+    const results = stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { requestedUrl: string; status: string });
+    expect(results).toHaveLength(2);
+    expect(results).toEqual([
+      expect.objectContaining({ requestedUrl: url, status: "saved" }),
+      expect.objectContaining({ requestedUrl: url, status: "skipped" })
+    ]);
   });
 
   it("rejects an empty URL batch", async () => {
