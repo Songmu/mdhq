@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.6](https://github.com/Songmu/mdhq/compare/v0.0.5...v0.0.6) - 2026-09-13
+
+- Print get result paths relative to the storage root by @Songmu with @Copilot in https://github.com/Songmu/mdhq/pull/42
+
 ## [v0.0.5](https://github.com/Songmu/mdhq/compare/v0.0.4...v0.0.5) - 2026-09-12
 
 - Add explicit assets CLI toggle by @Songmu in https://github.com/Songmu/mdhq/pull/40
