@@ -58,7 +58,7 @@ describe("CLI", () => {
     }
   });
 
-  it("prints only the path by default", async () => {
+  it("prints only the root-relative path by default", async () => {
     let stdout = "";
     let stderr = "";
     const io: CliIo = {
@@ -77,7 +77,7 @@ describe("CLI", () => {
     };
     expect(await runCli(["node", "mdhq", "get", "--root", root, url], io)).toBe(0);
     expect(stdout.trim()).toBe(
-      path.join(root, `127.0.0.1_${new URL(url).port}`, "article.md")
+      path.join(`127.0.0.1_${new URL(url).port}`, "article.md")
     );
     expect(stderr).toBe("");
   });
@@ -96,7 +96,16 @@ describe("CLI", () => {
     expect(
       await runCli(["node", "mdhq", "get", "--root", root, "--json", url], io)
     ).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ requestedUrl: url, status: "saved" });
+    expect(JSON.parse(stdout)).toMatchObject({
+      requestedUrl: url,
+      status: "saved",
+      path: path.join(`127.0.0.1_${new URL(url).port}`, "article.md"),
+      assets: [
+        {
+          path: expect.stringMatching(/^_assets[\\/]/u) as unknown as string
+        }
+      ]
+    });
   });
 
   it("merges URLs from arguments and stdin", async () => {
@@ -275,11 +284,7 @@ describe("CLI", () => {
       releaseSlow();
       expect(await run).toBe(1);
       expect(stdout).toBe(
-        `${path.join(
-          root,
-          `127.0.0.1_${slowAddress.port}`,
-          "slow.md"
-        )}\n`
+        `${path.join(`127.0.0.1_${slowAddress.port}`, "slow.md")}\n`
       );
     } finally {
       releaseSlow();
@@ -323,7 +328,7 @@ describe("CLI", () => {
     expect(
       await runCli(["node", "mdhq", "get", "--root", root, "--no-assets", url], io)
     ).toBe(0);
-    const document = await readFile(stdout.trim(), "utf8");
+    const document = await readFile(path.join(root, stdout.trim()), "utf8");
     expect(document).toContain(`![Example](${new URL("/image.png", url).href})`);
     await expect(access(path.join(root, "_assets"))).rejects.toMatchObject({
       code: "ENOENT"
@@ -352,7 +357,7 @@ describe("CLI", () => {
     expect(
       await runCli(["node", "mdhq", "get", "--root", root, "--assets", url], io)
     ).toBe(0);
-    const document = await readFile(stdout.trim(), "utf8");
+    const document = await readFile(path.join(root, stdout.trim()), "utf8");
     expect(document).toContain("](");
     expect(document).toContain("_assets/");
     expect(document).not.toContain(new URL("/image.png", url).href);
@@ -378,7 +383,7 @@ describe("CLI", () => {
     };
 
     expect(await runCli(["node", "mdhq", "get", "--root", root, url], io)).toBe(0);
-    const document = await readFile(stdout.trim(), "utf8");
+    const document = await readFile(path.join(root, stdout.trim()), "utf8");
     expect(document).toContain(`![Example](${new URL("/image.png", url).href})`);
     await expect(access(path.join(root, "_assets"))).rejects.toMatchObject({
       code: "ENOENT"

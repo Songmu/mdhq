@@ -32,6 +32,14 @@ function parseHeaders(values: string[]): HeaderValue[] {
   });
 }
 
+function toRootRelative(root: string, target: string): string {
+  const relative = path.relative(root, target);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return target;
+  }
+  return relative;
+}
+
 export interface CliIo {
   stdout: Pick<NodeJS.WriteStream, "write">;
   stderr: Pick<NodeJS.WriteStream, "write">;
@@ -107,6 +115,8 @@ export function createProgram(io: CliIo = process): Command {
         if (requestedUrls.length === 0) {
           throw new MdhqError("INVALID_URL", "At least one URL is required");
         }
+        const loaded = await loadConfig();
+        const root = resolveRoot(options.root, loaded.config);
         const scheduler = new RequestScheduler();
         let nextIndex = 0;
         const worker = async (): Promise<void> => {
@@ -119,7 +129,7 @@ export function createProgram(io: CliIo = process): Command {
             }
             const result = await getPage({
               url,
-              ...(options.root ? { root: options.root } : {}),
+              root,
               ...(options.assets !== undefined ? { assets: options.assets } : {}),
               update: options.update ?? false,
               ...(options.userAgent ? { userAgent: options.userAgent } : {}),
@@ -127,8 +137,17 @@ export function createProgram(io: CliIo = process): Command {
               scheduler,
               onWarning: (warning) => io.stderr.write(`warning: ${warning.message}\n`)
             });
+            const relativeResult = {
+              ...result,
+              path: toRootRelative(root, result.path),
+              assets: result.assets.map((asset) =>
+                asset.path === undefined
+                  ? asset
+                  : { ...asset, path: toRootRelative(root, asset.path) }
+              )
+            };
             io.stdout.write(
-              `${options.json ? JSON.stringify(result) : result.path}\n`
+              `${options.json ? JSON.stringify(relativeResult) : relativeResult.path}\n`
             );
           }
         };
