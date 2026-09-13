@@ -30,8 +30,8 @@ mdhq root
 ```
 
 `mdhq get` accepts multiple URLs as arguments or one URL per line on standard
-input; both sources are merged. It prints one absolute Markdown path per URL
-to stdout by default. Warnings are written to stderr. `--json` writes one
+input; both sources are merged. It prints one root-relative Markdown path per
+URL to stdout by default. Warnings are written to stderr. `--json` writes one
 compact JSON result object per URL as JSON Lines. Results are written as soon
 as each URL finishes, so parallel requests can produce output in completion
 order rather than input order. If a later request fails, results already

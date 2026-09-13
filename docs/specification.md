@@ -39,17 +39,18 @@ input. Both sources are merged, and up to eight URLs are processed in parallel.
 | `--header <header>` | Add an HTTP header. The option is repeatable and uses `Name: value` syntax. |
 | `--json` | Write one result per line as JSON Lines instead of only the Markdown path. |
 
-Without `--json`, stdout receives one absolute Markdown path per requested URL,
-with each path followed by a newline. Each result is written as soon as that
-URL finishes, so parallel requests can produce output in completion order
-rather than input order.
+Without `--json`, stdout receives one Markdown path per requested URL, relative
+to the effective storage root, with each path followed by a newline. Each
+result is written as soon as that URL finishes, so parallel requests can
+produce output in completion order rather than input order.
 Warnings are written to stderr.
 
 With `--json`, stdout contains one compact JSON object per requested URL,
-also written as soon as the URL finishes. Each line has this shape:
+also written as soon as the URL finishes. Markdown and asset paths are relative
+to the effective storage root. Each line has this shape:
 
 ```jsonl
-{"requestedUrl":"https://example.com/start","sourceUrl":"https://example.com/article","path":"/data/mdhq/example.com/article.md","status":"saved","assets":[],"warnings":[]}
+{"requestedUrl":"https://example.com/start","sourceUrl":"https://example.com/article","path":"example.com/article.md","status":"saved","assets":[],"warnings":[]}
 ```
 
 `status` is one of:
