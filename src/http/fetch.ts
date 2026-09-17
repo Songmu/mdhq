@@ -29,6 +29,7 @@ export interface FetchedResource {
   body: Uint8Array;
   finalUrl: string;
   contentType: string;
+  charset?: string;
   status: number;
   customHeadersAllowed: boolean;
   redirected: boolean;
@@ -40,6 +41,22 @@ export interface FetchedResource {
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
+// Match Defuddle CLI's 1 KiB prescan for an in-document charset declaration.
+const META_CHARSET_SCAN_LIMIT = 1024;
+const COMMENT_START = "<!--";
+const COMMENT_END = "-->";
+const RAW_TEXT_ELEMENTS = new Set([
+  "iframe",
+  "noembed",
+  "noframes",
+  "noscript",
+  "plaintext",
+  "script",
+  "style",
+  "textarea",
+  "title",
+  "xmp"
+]);
 
 type ProxyFetch = (
   input: RequestInfo | URL,
@@ -81,6 +98,158 @@ function requestHeaders(
 
 function contentType(value: string | null): string {
   return value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function charsetFromContentType(value: string | null): string | undefined {
+  const match = value?.match(
+    /(?:^|;)\s*charset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;\s,]*))/iu
+  );
+  return match?.slice(1).find((charset) => charset?.trim())?.trim();
+}
+
+/** Finds a tag's closing `>`, scanning after its opening `<`, or returns -1. */
+function findTagEndIndex(html: string, start: number): number {
+  let quote: string | undefined;
+  let expectingValue = false;
+  let unquotedValue = false;
+  for (let index = start; index < html.length; index += 1) {
+    const character = html[index];
+    if (quote) {
+      if (character === quote) {
+        quote = undefined;
+      }
+    } else if (expectingValue) {
+      if (/\s/u.test(character ?? "")) {
+        continue;
+      }
+      expectingValue = false;
+      if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === ">") {
+        return index;
+      } else {
+        unquotedValue = true;
+      }
+    } else if (unquotedValue) {
+      if (/\s/u.test(character ?? "")) {
+        unquotedValue = false;
+      } else if (character === ">") {
+        return index;
+      }
+    } else if (character === "=") {
+      expectingValue = true;
+    } else if (character === ">") {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function charsetFromMeta(body: Uint8Array): string | undefined {
+  const head = new TextDecoder("windows-1252").decode(
+    body.subarray(0, META_CHARSET_SCAN_LIMIT)
+  );
+  const lowerHead = head.toLowerCase();
+  let index = 0;
+  let rawTextElement: string | undefined;
+  while (index < head.length) {
+    if (rawTextElement) {
+      if (rawTextElement === "plaintext") {
+        break;
+      }
+      const closeTag = `</${rawTextElement}`;
+      const closingTag = lowerHead.indexOf(closeTag, index);
+      if (closingTag < 0) {
+        break;
+      }
+      const afterName = closingTag + closeTag.length;
+      const delimiter = lowerHead[afterName];
+      index = afterName;
+      // Only a complete end-tag name exits raw-text content.
+      if (
+        delimiter === ">" ||
+        delimiter === "/" ||
+        /\s/u.test(delimiter ?? "")
+      ) {
+        rawTextElement = undefined;
+      }
+      continue;
+    }
+
+    const start = head.indexOf("<", index);
+    if (start < 0) {
+      break;
+    }
+    if (head.startsWith(COMMENT_START, start)) {
+      const end = head.indexOf(COMMENT_END, start + COMMENT_START.length);
+      if (end < 0) {
+        break;
+      }
+      index = end + COMMENT_END.length;
+      continue;
+    }
+
+    const end = findTagEndIndex(head, start + 1);
+    if (end < 0) {
+      break;
+    }
+    index = end + 1;
+    const tag = head.slice(start, end + 1);
+    const tagName = tag.match(/^<([a-z][^\s/>]*)/iu)?.[1]?.toLowerCase();
+    if (!tagName) {
+      continue;
+    }
+    if (RAW_TEXT_ELEMENTS.has(tagName)) {
+      rawTextElement = tagName;
+      continue;
+    }
+    if (tagName !== "meta") {
+      continue;
+    }
+
+    const attributes = new Map<string, string>();
+    for (const attribute of tag.matchAll(
+      /\b([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/giu
+    )) {
+      const name = attribute[1]?.toLowerCase();
+      const value = attribute.slice(2).find((part) => part !== undefined);
+      if (name && value !== undefined) {
+        attributes.set(name, value);
+      }
+    }
+    const charset = attributes.get("charset")?.trim();
+    if (charset) {
+      return charset;
+    }
+    if (attributes.get("http-equiv")?.toLowerCase() === "content-type") {
+      const contentCharset = charsetFromContentType(attributes.get("content") ?? null);
+      if (contentCharset) {
+        return contentCharset;
+      }
+    }
+  }
+  return undefined;
+}
+
+function decodeHtml(body: Uint8Array, headerCharset: string | undefined): string {
+  if (headerCharset) {
+    try {
+      return new TextDecoder(headerCharset).decode(body);
+    } catch {
+      // Unsupported labels fall through to the next declared or fallback encoding.
+    }
+  }
+  for (const charset of [charsetFromMeta(body), "utf-8"]) {
+    if (!charset) {
+      continue;
+    }
+    try {
+      return new TextDecoder(charset).decode(body);
+    } catch {
+      // Unsupported labels fall through to the next declared or fallback encoding.
+    }
+  }
+  return new TextDecoder().decode(body);
 }
 
 async function readLimited(response: Response, limit: number): Promise<Uint8Array> {
@@ -196,7 +365,9 @@ export async function fetchResource(
       await response.body?.cancel().catch(() => undefined);
       throw new MdhqError("FETCH_FAILED", `HTTP ${response.status} for ${url.href}`);
     }
-    const type = contentType(response.headers.get("content-type"));
+    const contentTypeHeader = response.headers.get("content-type");
+    const type = contentType(contentTypeHeader);
+    const charset = charsetFromContentType(contentTypeHeader);
     if (options.acceptedContentTypes && !options.acceptedContentTypes.includes(type)) {
       await response.body?.cancel().catch(() => undefined);
       throw new MdhqError(
@@ -219,6 +390,7 @@ export async function fetchResource(
       body,
       finalUrl: url.href,
       contentType: type,
+      ...(charset ? { charset } : {}),
       status: response.status,
       customHeadersAllowed,
       redirected: redirects > 0,
@@ -271,7 +443,7 @@ export async function fetchHtml(
   }
   return {
     notModified: false,
-    html: new TextDecoder().decode(resource.body),
+    html: decodeHtml(resource.body, resource.charset),
     finalUrl: resource.finalUrl,
     customHeadersAllowed: resource.customHeadersAllowed,
     ...(resource.etag ? { etag: resource.etag } : {}),

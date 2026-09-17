@@ -30,6 +30,106 @@ describe("fetchHtml", () => {
           .end("<html></html>");
         return;
       }
+      if (request.url === "/shift-jis-header") {
+        response
+          .writeHead(200, { "content-type": "text/html; charset=Shift_JIS" })
+          .end(
+            Buffer.from([
+              ...Buffer.from(
+                '<html><head><meta charset="utf-8"></head><body><article><p>',
+                "ascii"
+              ),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
+      if (request.url === "/shift-jis-meta") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            Buffer.from([
+              ...Buffer.from(
+                '<html><head><meta charset="Shift_JIS"></head><body><article><p>',
+                "ascii"
+              ),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
+      if (request.url === "/shift-jis-legacy-meta") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            Buffer.from([
+              ...Buffer.from(
+                '<html><head><meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS"></head><body><article><p>',
+                "ascii"
+              ),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
+      if (request.url === "/invalid-charset") {
+        response
+          .writeHead(200, { "content-type": "text/html; charset=unknown-charset" })
+          .end("<html><body>UTF-8 fallback</body></html>");
+        return;
+      }
+      if (request.url === "/false-meta-comment") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end('<!-- <meta charset="Shift_JIS"> --><html><body>日本語</body></html>');
+        return;
+      }
+      if (request.url === "/false-meta-script") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            '<script>"<meta charset=\\"Shift_JIS\\">"</script><html><body>日本語</body></html>'
+          );
+        return;
+      }
+      if (request.url === "/script-slash-close") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            Buffer.from([
+              ...Buffer.from(
+                '<script></script/><meta charset="Shift_JIS"></head><body><article><p>',
+                "ascii"
+              ),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(`<html><body>${request.headers["x-test"] ?? ""}</body></html>`);
@@ -142,6 +242,62 @@ describe("fetchHtml", () => {
   it("captures the Vary response header", async () => {
     const result = await fetchHtml(`${baseUrl}/vary`);
     expect(result.vary).toBe("Authorization, Cookie");
+  });
+
+  it("gives the Content-Type charset precedence over HTML meta declarations", async () => {
+    const result = await fetchHtml(`${baseUrl}/shift-jis-header`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("decodes Shift_JIS declared by an HTML meta tag", async () => {
+    const result = await fetchHtml(`${baseUrl}/shift-jis-meta`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("decodes Shift_JIS declared by a legacy HTML meta tag", async () => {
+    const result = await fetchHtml(`${baseUrl}/shift-jis-legacy-meta`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("falls back to UTF-8 for an unsupported declared charset", async () => {
+    const result = await fetchHtml(`${baseUrl}/invalid-charset`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("UTF-8 fallback");
+    }
+  });
+
+  it("ignores meta tags inside HTML comments", async () => {
+    const result = await fetchHtml(`${baseUrl}/false-meta-comment`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("ignores meta tags inside raw-text elements", async () => {
+    const result = await fetchHtml(`${baseUrl}/false-meta-script`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("treats a `/` after a raw-text end-tag name as exiting raw-text content", async () => {
+    const result = await fetchHtml(`${baseUrl}/script-slash-close`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
   });
 
   it("enforces the response size limit", async () => {
