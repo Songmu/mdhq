@@ -4,7 +4,6 @@ import {
   fetch as undiciFetch,
   type Dispatcher
 } from "undici";
-import { parseHTML } from "linkedom";
 import { MdhqError } from "../errors.js";
 import type { HeaderValue } from "../types.js";
 import { DEFAULT_USER_AGENT } from "../version.js";
@@ -44,6 +43,18 @@ export interface FetchedResource {
 const proxyAgent = new EnvHttpProxyAgent();
 // Match Defuddle CLI's 1 KiB prescan for an in-document charset declaration.
 const META_CHARSET_SCAN_LIMIT = 1024;
+const RAW_TEXT_ELEMENTS = new Set([
+  "iframe",
+  "noembed",
+  "noframes",
+  "noscript",
+  "plaintext",
+  "script",
+  "style",
+  "textarea",
+  "title",
+  "xmp"
+]);
 
 type ProxyFetch = (
   input: RequestInfo | URL,
@@ -94,22 +105,94 @@ function charsetFromContentType(value: string | null): string | undefined {
   return match?.slice(1).find((charset) => charset?.trim())?.trim();
 }
 
+function tagEnd(html: string, start: number): number {
+  let quote: string | undefined;
+  for (let index = start; index < html.length; index += 1) {
+    const character = html[index];
+    if (quote) {
+      if (character === quote) {
+        quote = undefined;
+      }
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function charsetFromMeta(body: Uint8Array): string | undefined {
   const head = new TextDecoder("windows-1252").decode(
     body.subarray(0, META_CHARSET_SCAN_LIMIT)
   );
-  const completeHead = head.slice(0, head.lastIndexOf(">") + 1);
-  if (!completeHead.toLowerCase().includes("<meta")) {
-    return undefined;
-  }
-  const { document } = parseHTML(completeHead);
-  for (const meta of document.querySelectorAll("meta")) {
-    const charset = meta.getAttribute("charset")?.trim();
+  const lowerHead = head.toLowerCase();
+  let index = 0;
+  let rawTextElement: string | undefined;
+  while (index < head.length) {
+    if (rawTextElement) {
+      if (rawTextElement === "plaintext") {
+        break;
+      }
+      const closingTag = lowerHead.indexOf(`</${rawTextElement}`, index);
+      if (closingTag < 0) {
+        break;
+      }
+      const delimiter = lowerHead[closingTag + rawTextElement.length + 2];
+      index = closingTag + 2;
+      if (delimiter === ">" || /\s/u.test(delimiter ?? "")) {
+        rawTextElement = undefined;
+      }
+      continue;
+    }
+
+    const start = head.indexOf("<", index);
+    if (start < 0) {
+      break;
+    }
+    if (head.startsWith("<!--", start)) {
+      const end = head.indexOf("-->", start + 4);
+      if (end < 0) {
+        break;
+      }
+      index = end + 3;
+      continue;
+    }
+
+    const end = tagEnd(head, start + 1);
+    if (end < 0) {
+      break;
+    }
+    index = end + 1;
+    const tag = head.slice(start, end + 1);
+    const tagName = tag.match(/^<([a-z][^\s/>]*)/iu)?.[1]?.toLowerCase();
+    if (!tagName) {
+      continue;
+    }
+    if (RAW_TEXT_ELEMENTS.has(tagName)) {
+      rawTextElement = tagName;
+      continue;
+    }
+    if (tagName !== "meta") {
+      continue;
+    }
+
+    const attributes = new Map<string, string>();
+    for (const attribute of tag.matchAll(
+      /\b([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/giu
+    )) {
+      const name = attribute[1]?.toLowerCase();
+      const value = attribute.slice(2).find((part) => part !== undefined);
+      if (name && value !== undefined) {
+        attributes.set(name, value);
+      }
+    }
+    const charset = attributes.get("charset")?.trim();
     if (charset) {
       return charset;
     }
-    if (meta.getAttribute("http-equiv")?.toLowerCase() === "content-type") {
-      const contentCharset = charsetFromContentType(meta.getAttribute("content"));
+    if (attributes.get("http-equiv")?.toLowerCase() === "content-type") {
+      const contentCharset = charsetFromContentType(attributes.get("content") ?? null);
       if (contentCharset) {
         return contentCharset;
       }
