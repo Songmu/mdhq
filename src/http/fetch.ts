@@ -155,12 +155,15 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
       if (rawTextElement === "plaintext") {
         break;
       }
-      const closingTag = lowerHead.indexOf(`</${rawTextElement}`, index);
+      const closeTag = `</${rawTextElement}`;
+      const closingTag = lowerHead.indexOf(closeTag, index);
       if (closingTag < 0) {
         break;
       }
-      const delimiter = lowerHead[closingTag + rawTextElement.length + 2];
-      index = closingTag + 2;
+      const afterName = closingTag + closeTag.length;
+      const delimiter = lowerHead[afterName];
+      index = afterName;
+      // Only a complete end-tag name exits raw-text content.
       if (delimiter === ">" || /\s/u.test(delimiter ?? "")) {
         rawTextElement = undefined;
       }
