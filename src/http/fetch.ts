@@ -41,6 +41,7 @@ export interface FetchedResource {
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
+const META_CHARSET_SCAN_LIMIT = 1024;
 
 type ProxyFetch = (
   input: RequestInfo | URL,
@@ -92,7 +93,9 @@ function charsetFromContentType(value: string | null): string | undefined {
 }
 
 function charsetFromMeta(body: Uint8Array): string | undefined {
-  const head = new TextDecoder("windows-1252").decode(body.subarray(0, 1024));
+  const head = new TextDecoder("windows-1252").decode(
+    body.subarray(0, META_CHARSET_SCAN_LIMIT)
+  );
   for (const tag of head.matchAll(/<meta\b[^>]*>/giu)) {
     const attributes = new Map<string, string>();
     for (const attribute of tag[0].matchAll(
