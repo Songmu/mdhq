@@ -96,6 +96,20 @@ describe("fetchHtml", () => {
           .end("<html><body>UTF-8 fallback</body></html>");
         return;
       }
+      if (request.url === "/false-meta-comment") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end('<!-- <meta charset="Shift_JIS"> --><html><body>日本語</body></html>');
+        return;
+      }
+      if (request.url === "/false-meta-script") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            '<script>"<meta charset=\\"Shift_JIS\\">"</script><html><body>日本語</body></html>'
+          );
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(`<html><body>${request.headers["x-test"] ?? ""}</body></html>`);
@@ -239,6 +253,22 @@ describe("fetchHtml", () => {
     expect(result.notModified).toBe(false);
     if (!result.notModified) {
       expect(result.html).toContain("UTF-8 fallback");
+    }
+  });
+
+  it("ignores meta tags inside HTML comments", async () => {
+    const result = await fetchHtml(`${baseUrl}/false-meta-comment`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("ignores meta tags inside raw-text elements", async () => {
+    const result = await fetchHtml(`${baseUrl}/false-meta-script`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
     }
   });
 

@@ -4,6 +4,7 @@ import {
   fetch as undiciFetch,
   type Dispatcher
 } from "undici";
+import { parseHTML } from "linkedom";
 import { MdhqError } from "../errors.js";
 import type { HeaderValue } from "../types.js";
 import { DEFAULT_USER_AGENT } from "../version.js";
@@ -97,23 +98,14 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
   const head = new TextDecoder("windows-1252").decode(
     body.subarray(0, META_CHARSET_SCAN_LIMIT)
   );
-  for (const tag of head.matchAll(/<meta\b[^>]*>/giu)) {
-    const attributes = new Map<string, string>();
-    for (const attribute of tag[0].matchAll(
-      /\b([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/giu
-    )) {
-      const name = attribute[1]?.toLowerCase();
-      const value = attribute.slice(2).find((part) => part !== undefined);
-      if (name && value !== undefined) {
-        attributes.set(name, value);
-      }
-    }
-    const charset = attributes.get("charset")?.trim();
+  const { document } = parseHTML(head);
+  for (const meta of document.querySelectorAll("meta")) {
+    const charset = meta.getAttribute("charset")?.trim();
     if (charset) {
       return charset;
     }
-    if (attributes.get("http-equiv")?.toLowerCase() === "content-type") {
-      const contentCharset = charsetFromContentType(attributes.get("content") ?? null);
+    if (meta.getAttribute("http-equiv")?.toLowerCase() === "content-type") {
+      const contentCharset = charsetFromContentType(meta.getAttribute("content"));
       if (contentCharset) {
         return contentCharset;
       }
