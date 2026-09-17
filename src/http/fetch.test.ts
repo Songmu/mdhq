@@ -110,6 +110,26 @@ describe("fetchHtml", () => {
           );
         return;
       }
+      if (request.url === "/script-slash-close") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            Buffer.from([
+              ...Buffer.from(
+                '<script></script/><meta charset="Shift_JIS"></head><body><article><p>',
+                "ascii"
+              ),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(`<html><body>${request.headers["x-test"] ?? ""}</body></html>`);
@@ -266,6 +286,14 @@ describe("fetchHtml", () => {
 
   it("ignores meta tags inside raw-text elements", async () => {
     const result = await fetchHtml(`${baseUrl}/false-meta-script`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("treats a `/` after a raw-text end-tag name as exiting raw-text content", async () => {
+    const result = await fetchHtml(`${baseUrl}/script-slash-close`);
     expect(result.notModified).toBe(false);
     if (!result.notModified) {
       expect(result.html).toContain("日本語");

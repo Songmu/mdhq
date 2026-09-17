@@ -166,7 +166,11 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
       const delimiter = lowerHead[afterName];
       index = afterName;
       // Only a complete end-tag name exits raw-text content.
-      if (delimiter === ">" || /\s/u.test(delimiter ?? "")) {
+      if (
+        delimiter === ">" ||
+        delimiter === "/" ||
+        /\s/u.test(delimiter ?? "")
+      ) {
         rawTextElement = undefined;
       }
       continue;
