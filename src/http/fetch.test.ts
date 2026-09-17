@@ -35,7 +35,10 @@ describe("fetchHtml", () => {
           .writeHead(200, { "content-type": "text/html; charset=Shift_JIS" })
           .end(
             Buffer.from([
-              ...Buffer.from("<html><body><article><p>", "ascii"),
+              ...Buffer.from(
+                '<html><head><meta charset="utf-8"></head><body><article><p>',
+                "ascii"
+              ),
               0x93,
               0xfa,
               0x96,
@@ -181,7 +184,7 @@ describe("fetchHtml", () => {
     expect(result.vary).toBe("Authorization, Cookie");
   });
 
-  it("decodes Shift_JIS declared in the Content-Type header", async () => {
+  it("gives the Content-Type charset precedence over HTML meta declarations", async () => {
     const result = await fetchHtml(`${baseUrl}/shift-jis-header`);
     expect(result.notModified).toBe(false);
     if (!result.notModified) {
