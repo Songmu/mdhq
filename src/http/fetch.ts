@@ -98,7 +98,11 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
   const head = new TextDecoder("windows-1252").decode(
     body.subarray(0, META_CHARSET_SCAN_LIMIT)
   );
-  const { document } = parseHTML(head);
+  const completeHead = head.slice(0, head.lastIndexOf(">") + 1);
+  if (!completeHead.toLowerCase().includes("<meta")) {
+    return undefined;
+  }
+  const { document } = parseHTML(completeHead);
   for (const meta of document.querySelectorAll("meta")) {
     const charset = meta.getAttribute("charset")?.trim();
     if (charset) {
