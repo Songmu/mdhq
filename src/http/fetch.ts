@@ -41,6 +41,7 @@ export interface FetchedResource {
 }
 
 const proxyAgent = new EnvHttpProxyAgent();
+// Match Defuddle CLI's 1 KiB prescan for an in-document charset declaration.
 const META_CHARSET_SCAN_LIMIT = 1024;
 
 type ProxyFetch = (
@@ -122,7 +123,14 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
 }
 
 function decodeHtml(body: Uint8Array, headerCharset: string | undefined): string {
-  for (const charset of [headerCharset, charsetFromMeta(body), "utf-8"]) {
+  if (headerCharset) {
+    try {
+      return new TextDecoder(headerCharset).decode(body);
+    } catch {
+      // Unsupported labels fall through to the next declared or fallback encoding.
+    }
+  }
+  for (const charset of [charsetFromMeta(body), "utf-8"]) {
     if (!charset) {
       continue;
     }
