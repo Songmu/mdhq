@@ -43,6 +43,8 @@ export interface FetchedResource {
 const proxyAgent = new EnvHttpProxyAgent();
 // Match Defuddle CLI's 1 KiB prescan for an in-document charset declaration.
 const META_CHARSET_SCAN_LIMIT = 1024;
+const COMMENT_START = "<!--";
+const COMMENT_END = "-->";
 const RAW_TEXT_ELEMENTS = new Set([
   "iframe",
   "noembed",
@@ -174,12 +176,12 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
     if (start < 0) {
       break;
     }
-    if (head.startsWith("<!--", start)) {
-      const end = head.indexOf("-->", start + 4);
+    if (head.startsWith(COMMENT_START, start)) {
+      const end = head.indexOf(COMMENT_END, start + COMMENT_START.length);
       if (end < 0) {
         break;
       }
-      index = end + 3;
+      index = end + COMMENT_END.length;
       continue;
     }
 
