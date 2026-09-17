@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.7](https://github.com/Songmu/mdhq/compare/v0.0.6...v0.0.7) - 2026-09-17
+
+- deps(deps): bump the production-dependencies group with 2 updates by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/44
+- deps(deps-dev): bump @types/node from 26.4.1 to 26.5.1 in the development-dependencies group by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/45
+- Decode non-UTF-8 HTML before Defuddle conversion by @Songmu with @Copilot in https://github.com/Songmu/mdhq/pull/47
+
 ## [v0.0.6](https://github.com/Songmu/mdhq/compare/v0.0.5...v0.0.6) - 2026-09-13
 
 - Print get result paths relative to the storage root by @Songmu with @Copilot in https://github.com/Songmu/mdhq/pull/42
