@@ -29,6 +29,7 @@ export interface FetchedResource {
   body: Uint8Array;
   finalUrl: string;
   contentType: string;
+  charset?: string;
   status: number;
   customHeadersAllowed: boolean;
   redirected: boolean;
@@ -81,6 +82,53 @@ function requestHeaders(
 
 function contentType(value: string | null): string {
   return value?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function charsetFromContentType(value: string | null): string | undefined {
+  const match = value?.match(
+    /(?:^|;)\s*charset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;\s,]*))/iu
+  );
+  return match?.slice(1).find((charset) => charset?.trim())?.trim();
+}
+
+function charsetFromMeta(body: Uint8Array): string | undefined {
+  const head = new TextDecoder("windows-1252").decode(body.subarray(0, 1024));
+  for (const tag of head.matchAll(/<meta\b[^>]*>/giu)) {
+    const attributes = new Map<string, string>();
+    for (const attribute of tag[0].matchAll(
+      /\b([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/giu
+    )) {
+      const name = attribute[1]?.toLowerCase();
+      const value = attribute.slice(2).find((part) => part !== undefined);
+      if (name && value !== undefined) {
+        attributes.set(name, value);
+      }
+    }
+    const charset = attributes.get("charset")?.trim();
+    if (charset) {
+      return charset;
+    }
+    if (attributes.get("http-equiv")?.toLowerCase() === "content-type") {
+      const contentCharset = charsetFromContentType(attributes.get("content") ?? null);
+      if (contentCharset) {
+        return contentCharset;
+      }
+    }
+  }
+  return undefined;
+}
+
+function decodeHtml(body: Uint8Array, headerCharset: string | undefined): string {
+  for (const charset of [headerCharset, charsetFromMeta(body), "utf-8"]) {
+    if (!charset) {
+      continue;
+    }
+    try {
+      return new TextDecoder(charset).decode(body);
+    } catch {
+    }
+  }
+  return new TextDecoder().decode(body);
 }
 
 async function readLimited(response: Response, limit: number): Promise<Uint8Array> {
@@ -196,7 +244,9 @@ export async function fetchResource(
       await response.body?.cancel().catch(() => undefined);
       throw new MdhqError("FETCH_FAILED", `HTTP ${response.status} for ${url.href}`);
     }
-    const type = contentType(response.headers.get("content-type"));
+    const contentTypeHeader = response.headers.get("content-type");
+    const type = contentType(contentTypeHeader);
+    const charset = charsetFromContentType(contentTypeHeader);
     if (options.acceptedContentTypes && !options.acceptedContentTypes.includes(type)) {
       await response.body?.cancel().catch(() => undefined);
       throw new MdhqError(
@@ -219,6 +269,7 @@ export async function fetchResource(
       body,
       finalUrl: url.href,
       contentType: type,
+      ...(charset ? { charset } : {}),
       status: response.status,
       customHeadersAllowed,
       redirected: redirects > 0,
@@ -271,7 +322,7 @@ export async function fetchHtml(
   }
   return {
     notModified: false,
-    html: new TextDecoder().decode(resource.body),
+    html: decodeHtml(resource.body, resource.charset),
     finalUrl: resource.finalUrl,
     customHeadersAllowed: resource.customHeadersAllowed,
     ...(resource.etag ? { etag: resource.etag } : {}),

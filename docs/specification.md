@@ -187,8 +187,9 @@ Page responses must have one of these media types:
 - `application/xhtml+xml`
 
 Media type parameters such as `charset` are ignored during comparison. A
-missing or unsupported page Content-Type is an error. Response bytes are
-currently decoded as UTF-8.
+missing or unsupported page Content-Type is an error. Page bytes are decoded
+using the `charset` parameter when present, otherwise an early HTML `<meta>`
+charset declaration, falling back to UTF-8.
 
 Redirect statuses `301`, `302`, `303`, `307`, and `308` are followed.
 Redirects to unsupported schemes are rejected. Non-success final HTTP
@@ -796,7 +797,6 @@ Fatal library errors are instances of `MdhqError`. See
 ## Current limitations
 
 - Only HTML and XHTML page responses are accepted.
-- Page bytes are decoded as UTF-8 without HTML charset sniffing.
 - No headless browser is included.
 - No Markdown, PDF, JSON, or image page import is implemented.
 - No local-link conversion between saved Markdown documents is implemented.

@@ -30,6 +30,43 @@ describe("fetchHtml", () => {
           .end("<html></html>");
         return;
       }
+      if (request.url === "/shift-jis-header") {
+        response
+          .writeHead(200, { "content-type": "text/html; charset=Shift_JIS" })
+          .end(
+            Buffer.from([
+              ...Buffer.from("<html><body><article><p>", "ascii"),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
+      if (request.url === "/shift-jis-meta") {
+        response
+          .writeHead(200, { "content-type": "text/html" })
+          .end(
+            Buffer.from([
+              ...Buffer.from(
+                '<html><head><meta charset="Shift_JIS"></head><body><article><p>',
+                "ascii"
+              ),
+              0x93,
+              0xfa,
+              0x96,
+              0x7b,
+              0x8c,
+              0xea,
+              ...Buffer.from("</p></article></body></html>", "ascii")
+            ])
+          );
+        return;
+      }
       response
         .writeHead(200, { "content-type": "text/html; charset=utf-8" })
         .end(`<html><body>${request.headers["x-test"] ?? ""}</body></html>`);
@@ -142,6 +179,22 @@ describe("fetchHtml", () => {
   it("captures the Vary response header", async () => {
     const result = await fetchHtml(`${baseUrl}/vary`);
     expect(result.vary).toBe("Authorization, Cookie");
+  });
+
+  it("decodes Shift_JIS declared in the Content-Type header", async () => {
+    const result = await fetchHtml(`${baseUrl}/shift-jis-header`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
+  });
+
+  it("decodes Shift_JIS declared by an HTML meta tag", async () => {
+    const result = await fetchHtml(`${baseUrl}/shift-jis-meta`);
+    expect(result.notModified).toBe(false);
+    if (!result.notModified) {
+      expect(result.html).toContain("日本語");
+    }
   });
 
   it("enforces the response size limit", async () => {
