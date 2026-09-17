@@ -105,16 +105,37 @@ function charsetFromContentType(value: string | null): string | undefined {
   return match?.slice(1).find((charset) => charset?.trim())?.trim();
 }
 
-function tagEnd(html: string, start: number): number {
+/** Finds a tag's closing `>`, scanning after its opening `<`, or returns -1. */
+function findTagEndIndex(html: string, start: number): number {
   let quote: string | undefined;
+  let expectingValue = false;
+  let unquotedValue = false;
   for (let index = start; index < html.length; index += 1) {
     const character = html[index];
     if (quote) {
       if (character === quote) {
         quote = undefined;
       }
-    } else if (character === '"' || character === "'") {
-      quote = character;
+    } else if (expectingValue) {
+      if (/\s/u.test(character ?? "")) {
+        continue;
+      }
+      expectingValue = false;
+      if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === ">") {
+        return index;
+      } else {
+        unquotedValue = true;
+      }
+    } else if (unquotedValue) {
+      if (/\s/u.test(character ?? "")) {
+        unquotedValue = false;
+      } else if (character === ">") {
+        return index;
+      }
+    } else if (character === "=") {
+      expectingValue = true;
     } else if (character === ">") {
       return index;
     }
@@ -159,7 +180,7 @@ function charsetFromMeta(body: Uint8Array): string | undefined {
       continue;
     }
 
-    const end = tagEnd(head, start + 1);
+    const end = findTagEndIndex(head, start + 1);
     if (end < 0) {
       break;
     }
