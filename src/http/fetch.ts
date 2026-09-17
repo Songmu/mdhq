@@ -126,6 +126,7 @@ function decodeHtml(body: Uint8Array, headerCharset: string | undefined): string
     try {
       return new TextDecoder(charset).decode(body);
     } catch {
+      // Unsupported labels fall through to the next declared or fallback encoding.
     }
   }
   return new TextDecoder().decode(body);
