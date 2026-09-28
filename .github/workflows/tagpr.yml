@@ -23,7 +23,7 @@ jobs:
           node-version-file: package.json
           package-manager-cache: false
       - id: tagpr
-        uses: Songmu/tagpr@7ebae2dcc300132baa7cc9dd108c8923b07fc366 # v1
+        uses: Songmu/tagpr@2afc990a4a5a9a340665cc1a484c2102f7de332f # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
