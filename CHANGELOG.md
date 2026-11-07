@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.8](https://github.com/Songmu/mdhq/compare/v0.0.7...v0.0.8) - 2026-11-07
+
+- deps(deps-dev): bump the development-dependencies group with 2 updates by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/49
+
 ## [v0.0.7](https://github.com/Songmu/mdhq/compare/v0.0.6...v0.0.7) - 2026-09-17
 
 - deps(deps): bump the production-dependencies group with 2 updates by @dependabot[bot] in https://github.com/Songmu/mdhq/pull/44
